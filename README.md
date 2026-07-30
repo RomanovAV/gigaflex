@@ -329,6 +329,8 @@ Review behavior:
   iteration is accepted without rerunning the task agent
 - only exhausted task retries stop for operator inspection; the plan is restored
   to the current task before the run exits
+- if a configured model returns `API Error: 404 Model not found`, retry the same
+  prompt without `--model` and use GigaCode's default model for later calls
 - classify transient failures with `retry_patterns`
 - classify rate limits with `rate_limit_patterns`; pass
   `--wait-on-rate-limit SECONDS` to wait longer before retrying those failures

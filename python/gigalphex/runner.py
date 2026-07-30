@@ -802,6 +802,8 @@ def describe_failure(label: str, result: ExecResult) -> str:
         parts.append("idle timed out")
     elif result.timed_out:
         parts.append("timed out")
+    elif result.api_error:
+        parts.append(f"failed with {result.api_error}")
     else:
         parts.append(f"exited with status {result.returncode}")
     if result.approval_unavailable:

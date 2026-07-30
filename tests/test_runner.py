@@ -1253,6 +1253,23 @@ class FailureDescriptionTest(unittest.TestCase):
 
         self.assertEqual("gigacode task session hit a transient error", message)
 
+    def test_describes_api_error_even_when_process_exits_zero(self) -> None:
+        from gigalphex.runner import describe_failure
+
+        message = describe_failure(
+            "gigacode review agent quality",
+            ExecResult(
+                output="[API Error: 404 Model not found]\n",
+                returncode=0,
+                api_error="API Error: 404 Model not found",
+            ),
+        )
+
+        self.assertEqual(
+            "gigacode review agent quality failed with API Error: 404 Model not found",
+            message,
+        )
+
     def test_describes_noninteractive_approval_failure(self) -> None:
         from gigalphex.runner import describe_failure
 

@@ -671,6 +671,166 @@ raise SystemExit(7)
             self.assertTrue(result.transient_error)
             self.assertFalse(result.ok)
 
+    def test_marks_api_error_as_failure_when_process_exits_zero(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            script = write_script(
+                Path(tmp) / "api_error.py",
+                """#!/usr/bin/env python3
+import json
+import sys
+sys.stdin.read()
+print(json.dumps({
+    "type": "result",
+    "subtype": "success",
+    "result": "[API Error: 404 Model not found]",
+    "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0
+    }
+}))
+""",
+            )
+            statistics = RunStatistics()
+
+            result = GigaCodeExecutor(
+                command=str(script),
+                retry_count=0,
+                output=lambda _line: None,
+                statistics=statistics,
+                name="review-agent",
+            ).run("prompt")
+
+            self.assertFalse(result.ok)
+            self.assertEqual(0, result.returncode)
+            self.assertEqual("API Error: 404 Model not found", result.api_error)
+            self.assertEqual("api_error", statistics.invocations[0].status)
+
+    def test_model_not_found_falls_back_to_default_model_and_caches_it(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            invocations = tmp_path / "invocations.jsonl"
+            script = write_script(
+                tmp_path / "model_fallback.py",
+                f"""#!/usr/bin/env python3
+from pathlib import Path
+import json
+import sys
+with Path({str(invocations)!r}).open("a", encoding="utf-8") as stream:
+    stream.write(json.dumps(sys.argv[1:]) + "\\n")
+if "--model" in sys.argv or any(arg.startswith("--model=") for arg in sys.argv):
+    result = "[API Error: 404 Model not found]"
+else:
+    result = "DONE"
+print(json.dumps({{
+    "type": "result",
+    "subtype": "success",
+    "result": result,
+    "usage": {{
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0
+    }}
+}}))
+""",
+            )
+            statistics = RunStatistics()
+            diagnostics: list[str] = []
+            visible: list[str] = []
+            executor = GigaCodeExecutor(
+                command=str(script),
+                args=["--model", "retired-model"],
+                retry_count=0,
+                output=visible.append,
+                diagnostic=diagnostics.append,
+                statistics=statistics,
+                name="review-agent",
+            )
+
+            first = executor.run("first prompt")
+            second = executor.run("second prompt")
+
+            captured = [
+                json.loads(line)
+                for line in invocations.read_text(encoding="utf-8").splitlines()
+            ]
+            self.assertTrue(first.ok)
+            self.assertTrue(second.ok)
+            self.assertEqual("DONE\n", first.output)
+            self.assertEqual(3, len(captured))
+            self.assertIn("--model", captured[0])
+            self.assertIn("retired-model", captured[0])
+            self.assertNotIn("--model", captured[1])
+            self.assertNotIn("--model", captured[2])
+            self.assertEqual(
+                ["api_error", "success", "success"],
+                [item.status for item in statistics.invocations],
+            )
+            self.assertIn("event=model_fallback", "\n".join(diagnostics))
+            self.assertIn("retrying with the default model", "".join(visible))
+
+    def test_other_api_404_does_not_trigger_model_fallback(self) -> None:
+        executor = GigaCodeExecutor(
+            args=["--model", "configured-model"],
+            retry_count=0,
+            output=lambda _line: None,
+        )
+        failure = ExecResult(
+            output="[API Error: 404 Endpoint not found]\n",
+            returncode=0,
+            api_error="API Error: 404 Endpoint not found",
+        )
+
+        with (
+            patch.object(executor, "_run_once", return_value=failure),
+            patch.object(executor, "_run_without_configured_model") as fallback,
+        ):
+            result = executor.run("prompt")
+
+        self.assertFalse(result.ok)
+        fallback.assert_not_called()
+
+    def test_parallel_model_fallback_keeps_shared_executor_args_unchanged(self) -> None:
+        executor = GigaCodeExecutor(
+            args=["--model", "retired-model"],
+            retry_count=0,
+            max_workers=2,
+            output=lambda _line: None,
+        )
+        configured_calls = threading.Barrier(2)
+
+        def unavailable_model(_prompt, _output, _session):
+            configured_calls.wait(timeout=5)
+            return ExecResult(
+                output="[API Error: 404 Model not found]\n",
+                returncode=0,
+                api_error="API Error: 404 Model not found",
+            )
+
+        def default_model(_prompt, _output, _session):
+            return ExecResult(output="NO FINDINGS\n", returncode=0)
+
+        with (
+            patch.object(executor, "_run_once", side_effect=unavailable_model) as configured,
+            patch.object(
+                executor,
+                "_run_without_configured_model",
+                side_effect=default_model,
+            ) as fallback,
+        ):
+            results = executor.run_batch(
+                {
+                    "quality": "quality prompt",
+                    "testing": "testing prompt",
+                }
+            )
+
+        self.assertTrue(all(result.ok for result in results.values()))
+        self.assertEqual(2, configured.call_count)
+        self.assertEqual(2, fallback.call_count)
+        self.assertEqual(["--model", "retired-model"], executor.args)
+        self.assertIn("--model retired-model", executor.command_line())
+
     def test_rate_limit_uses_configured_wait_before_retry(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)

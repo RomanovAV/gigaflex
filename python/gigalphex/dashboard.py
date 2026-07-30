@@ -167,8 +167,15 @@ class ProgressDashboard:
                 item["started_at"] = now
                 item["last_activity_at"] = now
                 item["pid"] = fields.get("pid")
+                item["error"] = ""
             elif event in {"first_output", "activity", "stdin_sent"}:
                 item["last_activity_at"] = now
+            elif event == "model_fallback":
+                item["status"] = "waiting_retry"
+                item["error"] = (
+                    f"Configured model {fields.get('configured_model', 'unknown')} "
+                    "is unavailable; using the default model"
+                )
             elif event == "retry_scheduled":
                 item["status"] = "waiting_retry"
                 item["retry_at"] = fields.get("next_attempt")
@@ -188,6 +195,7 @@ class ProgressDashboard:
                         "idle_timed_out",
                         "transient_error",
                         "rate_limited",
+                        "api_error",
                         "approval_unavailable",
                     )
                 ) or fields.get("returncode", 0) != 0
@@ -537,4 +545,6 @@ def _executor_failure(fields: dict[str, object]) -> str:
         return "Session timed out"
     if _is_truthy(fields.get("approval_unavailable")):
         return "Approval is unavailable in non-interactive mode"
+    if _is_truthy(fields.get("api_error")):
+        return str(fields["api_error"])
     return f"GigaCode exited with code {fields.get('returncode', 'unknown')}"

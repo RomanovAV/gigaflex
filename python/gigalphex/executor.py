@@ -8,6 +8,7 @@ import json
 import os
 from pathlib import Path
 import queue
+import re
 import signal
 import subprocess
 import shlex
@@ -26,6 +27,10 @@ APPROVAL_UNAVAILABLE_TEXT = (
 )
 PROCESS_TERMINATION_GRACE_SECONDS = 2.0
 PROCESS_TERMINATION_POLL_SECONDS = 0.05
+API_ERROR_RE = re.compile(
+    r"\A\s*\[?(API Error:\s*\d{3}(?:\s+[^\r\n\]]*)?)\]?\s*\Z",
+    re.IGNORECASE,
+)
 
 
 DEFAULT_TRANSIENT_RETRY_PATTERNS = [
@@ -59,6 +64,7 @@ class ExecResult:
     idle_timed_out: bool = False
     transient_error: bool = False
     rate_limited: bool = False
+    api_error: str = ""
     attempts: int = 1
     wall_duration_ms: int = 0
     reported_duration_ms: Optional[int] = None
@@ -76,6 +82,7 @@ class ExecResult:
             and not self.idle_timed_out
             and not self.transient_error
             and not self.rate_limited
+            and not self.api_error
             and not self.approval_unavailable
         )
 
@@ -137,6 +144,11 @@ class GigaCodeExecutor:
         self.statistics = statistics
         self._active_lock = threading.Lock()
         self._active_processes: dict[int, _ActiveProcess] = {}
+        self._model_fallback_lock = threading.Lock()
+        self._use_default_model = False
+        self._args_without_model, self._configured_model = _without_model_args(
+            self.args
+        )
 
     def run(
         self,
@@ -255,7 +267,12 @@ class GigaCodeExecutor:
             self._event(session, "attempt_started", attempt=attempt, attempts=attempts)
             if attempt > 1:
                 output(f"retrying gigacode command, attempt {attempt}/{attempts}\n")
-            result = self._run_once(prompt, output, session)
+            using_default_model = self._default_model_fallback_active()
+            result = (
+                self._run_without_configured_model(prompt, output, session)
+                if using_default_model
+                else self._run_once(prompt, output, session)
+            )
             result.attempts = attempt
             self._record_statistics(session, attempt, result)
             if result.ok:
@@ -269,6 +286,44 @@ class GigaCodeExecutor:
                     reason="approval_unavailable",
                 )
                 return result
+            if (
+                not using_default_model
+                and self._configured_model
+                and _is_model_not_found(result)
+            ):
+                self._activate_default_model_fallback()
+                self._event(
+                    session,
+                    "model_fallback",
+                    configured_model=self._configured_model,
+                    reason=result.api_error,
+                )
+                if retry_guard is not None and not retry_guard(result):
+                    self._event(
+                        session,
+                        "retry_stopped",
+                        attempt=attempt,
+                        reason="retry_guard_rejected",
+                    )
+                    return result
+                output(
+                    f"configured GigaCode model {self._configured_model!r} "
+                    "was not found; retrying with the default model\n"
+                )
+                result = self._run_without_configured_model(prompt, output, session)
+                result.attempts = attempt
+                self._record_statistics(session, attempt, result)
+                if result.ok:
+                    self._event(session, "attempt_succeeded", attempt=attempt)
+                    return result
+                if result.approval_unavailable:
+                    self._event(
+                        session,
+                        "retry_stopped",
+                        attempt=attempt,
+                        reason="approval_unavailable",
+                    )
+                    return result
             last = result
             if attempt < attempts:
                 if retry_guard is not None and not retry_guard(result):
@@ -309,6 +364,27 @@ class GigaCodeExecutor:
     ) -> ExecResult:
         return self._run(prompt, output, session)
 
+    def _run_without_configured_model(
+        self,
+        prompt: str,
+        output: Callable[[str], None],
+        session: str,
+    ) -> ExecResult:
+        return self._run(
+            prompt,
+            output,
+            session,
+            invocation_args=self._args_without_model,
+        )
+
+    def _default_model_fallback_active(self) -> bool:
+        with self._model_fallback_lock:
+            return self._use_default_model
+
+    def _activate_default_model_fallback(self) -> None:
+        with self._model_fallback_lock:
+            self._use_default_model = True
+
     def _retry_delay(self, result: ExecResult) -> float:
         if result.rate_limited and self.wait_on_rate_limit is not None:
             return max(0.0, self.wait_on_rate_limit)
@@ -319,9 +395,14 @@ class GigaCodeExecutor:
         prompt: str,
         output: Callable[[str], None],
         session: str,
+        *,
+        invocation_args: Optional[list[str]] = None,
     ) -> ExecResult:
         started = time.monotonic()
-        argv, stdin_prompt = self._build_invocation(prompt)
+        argv, stdin_prompt = self._build_invocation(
+            prompt,
+            args=invocation_args,
+        )
         pipe_stdin = bool(stdin_prompt)
         self._event(
             session,
@@ -549,8 +630,9 @@ class GigaCodeExecutor:
             text += "\n"
         error_text = "".join(stderr_chunks)
         wall_duration_ms = _elapsed_ms(started)
-        failed = returncode != 0 or timed_out or idle_timed_out
         failure_text = f"{text}\n{error_text}"
+        api_error = _extract_api_error(text) or _extract_api_error(error_text)
+        failed = returncode != 0 or timed_out or idle_timed_out or bool(api_error)
         result = ExecResult(
             output=text,
             error_output=error_text,
@@ -560,6 +642,7 @@ class GigaCodeExecutor:
             idle_timed_out=idle_timed_out,
             transient_error=failed and matches_any(failure_text, self.retry_patterns),
             rate_limited=failed and matches_any(failure_text, self.rate_limit_patterns),
+            api_error=api_error,
             wall_duration_ms=wall_duration_ms,
             reported_duration_ms=stream_decoder.reported_duration_ms,
             api_duration_ms=stream_decoder.api_duration_ms,
@@ -583,6 +666,7 @@ class GigaCodeExecutor:
             idle_timed_out=idle_timed_out,
             transient_error=result.transient_error,
             rate_limited=result.rate_limited,
+            api_error=result.api_error or False,
             approval_unavailable=result.approval_unavailable,
         )
         return result
@@ -681,22 +765,23 @@ class GigaCodeExecutor:
         prompt: str,
         *,
         require_placeholder: bool = False,
+        args: Optional[list[str]] = None,
     ) -> tuple[list[str], str]:
         used_placeholder = False
-        args: list[str] = []
-        for arg in self.args:
+        rendered_args: list[str] = []
+        for arg in self.args if args is None else args:
             if "{prompt}" in arg:
-                args.append(arg.replace("{prompt}", prompt))
+                rendered_args.append(arg.replace("{prompt}", prompt))
                 used_placeholder = True
             else:
-                args.append(arg)
+                rendered_args.append(arg)
         if not used_placeholder:
             if require_placeholder:
-                return [self.command, *args], prompt
-            args.extend(["-p", prompt])
+                return [self.command, *rendered_args], prompt
+            rendered_args.extend(["-p", prompt])
         if not require_placeholder:
-            args = _with_stream_json_output(args)
-        return [self.command, *args], ""
+            rendered_args = _with_stream_json_output(rendered_args)
+        return [self.command, *rendered_args], ""
 
     def _safe_command(self, argv: list[str], prompt: str) -> str:
         safe_args = [
@@ -727,6 +812,38 @@ class GigaCodeExecutor:
 def matches_any(text: str, patterns: list[str]) -> bool:
     lowered = text.lower()
     return any(pattern and pattern.lower() in lowered for pattern in patterns)
+
+
+def _extract_api_error(text: str) -> str:
+    match = API_ERROR_RE.search(text)
+    return match.group(1).strip() if match else ""
+
+
+def _is_model_not_found(result: ExecResult) -> bool:
+    api_error = result.api_error.casefold()
+    return api_error.startswith("api error: 404") and "model not found" in api_error
+
+
+def _without_model_args(args: list[str]) -> tuple[list[str], str]:
+    normalized: list[str] = []
+    models: list[str] = []
+    index = 0
+    while index < len(args):
+        arg = args[index]
+        if arg in {"-m", "--model"}:
+            if index + 1 < len(args):
+                models.append(args[index + 1])
+                index += 2
+            else:
+                index += 1
+            continue
+        if arg.startswith("-m=") or arg.startswith("--model="):
+            models.append(arg.split("=", 1)[1])
+            index += 1
+            continue
+        normalized.append(arg)
+        index += 1
+    return normalized, ", ".join(model for model in models if model)
 
 
 def _terminate_process_group(
@@ -977,6 +1094,8 @@ def _failure_reason(result: ExecResult) -> str:
         return "rate_limited"
     if result.transient_error:
         return "transient_error"
+    if result.api_error:
+        return "api_error"
     return f"exit_{result.returncode}"
 
 
