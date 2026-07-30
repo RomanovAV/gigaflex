@@ -1,15 +1,19 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import os
 from pathlib import Path
 import re
 import shutil
 import subprocess
-from typing import Iterable
+from typing import Iterable, Optional
 
 
 DATE_PREFIX_RE = re.compile(r"^[\d-]+")
 BRANCH_SLUG_RE = re.compile(r"[^A-Za-z0-9._-]+")
+COMMIT_IDENTITY_RE = re.compile(
+    r"^(.*) <([^<>]*)> (\d+) ([+-]\d{4})$"
+)
 
 
 class GitError(RuntimeError):
@@ -20,11 +24,19 @@ class GitError(RuntimeError):
 class GitService:
     cwd: Path = Path(".")
 
-    def run(self, *args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
+    def run(
+        self,
+        *args: str,
+        check: bool = True,
+        input_text: Optional[str] = None,
+        env: Optional[dict[str, str]] = None,
+    ) -> subprocess.CompletedProcess[str]:
         proc = subprocess.run(
             ["git", *args],
             cwd=str(self.cwd),
             text=True,
+            input=input_text,
+            env={**os.environ, **env} if env is not None else None,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
         )
@@ -127,6 +139,87 @@ class GitService:
         )
         return [line for line in proc.stdout.splitlines() if line]
 
+    def prefix_commit_messages_since(self, commit: str, prefix: str) -> list[str]:
+        prefix = prefix.strip()
+        head = self.head_commit()
+        if not prefix or not head or head == commit:
+            return []
+        if commit:
+            ancestor = self.run(
+                "merge-base",
+                "--is-ancestor",
+                commit,
+                head,
+                check=False,
+            )
+            if ancestor.returncode != 0:
+                raise GitError(
+                    f"cannot prefix commits because {commit} is not an ancestor of HEAD"
+                )
+
+        revision_range = f"{commit}..{head}" if commit else head
+        commits = self.run(
+            "rev-list",
+            "--reverse",
+            "--topo-order",
+            revision_range,
+        ).stdout.splitlines()
+        parsed = {
+            object_id: _parse_commit(self.run("cat-file", "commit", object_id).stdout)
+            for object_id in commits
+        }
+        changed_subjects = [
+            item.subject
+            for item in parsed.values()
+            if not _message_has_prefix(item.message, prefix)
+        ]
+        if not changed_subjects:
+            return []
+
+        commit_set = set(commits)
+        rewritten: dict[str, str] = {}
+        for object_id in commits:
+            item = parsed[object_id]
+            parents = []
+            for parent in item.parents:
+                if parent in commit_set and parent not in rewritten:
+                    raise GitError(
+                        "cannot prefix commits because their topological order is invalid"
+                    )
+                parents.append(rewritten.get(parent, parent))
+
+            message = (
+                item.message
+                if _message_has_prefix(item.message, prefix)
+                else _prefix_message(item.message, prefix)
+            )
+            parent_args = [
+                value
+                for parent in parents
+                for value in ("-p", parent)
+            ]
+            result = self.run(
+                "commit-tree",
+                item.tree,
+                *parent_args,
+                input_text=message,
+                env=_commit_identity_env(item),
+            )
+            rewritten[object_id] = result.stdout.strip()
+
+        new_head = rewritten.get(head)
+        if not new_head:
+            raise GitError("cannot prefix commits because HEAD was not rewritten")
+        self.run(
+            "update-ref",
+            "-m",
+            f"gigalphex: prefix new commits with {prefix}",
+            "HEAD",
+            new_head,
+            head,
+        )
+        return changed_subjects
+
     def ensure_clean(self, allow_dirty: bool, ignored_paths: Iterable[Path] = ()) -> None:
         if allow_dirty:
             return
@@ -202,6 +295,82 @@ class GitService:
         self.run("add", "--all")
         self.run("commit", "-m", message)
         return True
+
+
+@dataclass(frozen=True)
+class _ParsedCommit:
+    tree: str
+    parents: tuple[str, ...]
+    author: str
+    committer: str
+    message: str
+
+    @property
+    def subject(self) -> str:
+        lines = self.message.splitlines()
+        return lines[0] if lines else "(empty commit message)"
+
+
+def _parse_commit(raw: str) -> _ParsedCommit:
+    try:
+        headers, message = raw.split("\n\n", 1)
+    except ValueError as exc:
+        raise GitError("cannot parse commit object without a message separator") from exc
+
+    tree = ""
+    parents: list[str] = []
+    author = ""
+    committer = ""
+    for line in headers.splitlines():
+        if line.startswith("tree "):
+            tree = line.removeprefix("tree ")
+        elif line.startswith("parent "):
+            parents.append(line.removeprefix("parent "))
+        elif line.startswith("author "):
+            author = line.removeprefix("author ")
+        elif line.startswith("committer "):
+            committer = line.removeprefix("committer ")
+    if not tree or not author or not committer:
+        raise GitError("cannot parse required commit metadata")
+    return _ParsedCommit(
+        tree=tree,
+        parents=tuple(parents),
+        author=author,
+        committer=committer,
+        message=message,
+    )
+
+
+def _message_has_prefix(message: str, prefix: str) -> bool:
+    subject = message.split("\n", 1)[0]
+    return subject == prefix or subject.startswith(f"{prefix} ")
+
+
+def _prefix_message(message: str, prefix: str) -> str:
+    return f"{prefix} {message}" if message else f"{prefix}\n"
+
+
+def _commit_identity_env(commit: _ParsedCommit) -> dict[str, str]:
+    author_name, author_email, author_date = _parse_commit_identity(commit.author)
+    committer_name, committer_email, committer_date = _parse_commit_identity(
+        commit.committer
+    )
+    return {
+        "GIT_AUTHOR_NAME": author_name,
+        "GIT_AUTHOR_EMAIL": author_email,
+        "GIT_AUTHOR_DATE": author_date,
+        "GIT_COMMITTER_NAME": committer_name,
+        "GIT_COMMITTER_EMAIL": committer_email,
+        "GIT_COMMITTER_DATE": committer_date,
+    }
+
+
+def _parse_commit_identity(value: str) -> tuple[str, str, str]:
+    match = COMMIT_IDENTITY_RE.fullmatch(value)
+    if not match:
+        raise GitError("cannot parse commit author or committer metadata")
+    name, email, timestamp, timezone = match.groups()
+    return name, email, f"@{timestamp} {timezone}"
 
 
 def branch_name_from_plan(plan_file: Path) -> str:

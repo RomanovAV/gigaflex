@@ -7,7 +7,7 @@ from typing import Optional
 
 from .dashboard import ProgressDashboard
 from .executor import ExecResult, GigaCodeExecutor
-from .git import GitService
+from .git import GitError, GitService
 from .plan import Plan, Task, file_has_uncompleted_checkbox, parse_plan, parse_plan_file
 from .progress import ProgressLog
 from .prompts import (
@@ -136,6 +136,10 @@ class Runner:
                     )
                 ),
             )
+            self._prefix_new_commits(
+                head_before,
+                f"task {task_label}",
+            )
             self._accept_task_result_or_raise(
                 result,
                 selected_task,
@@ -188,6 +192,10 @@ class Runner:
                         )
                     ),
                 )
+                self._prefix_new_commits(
+                    retry_head_before,
+                    f"task completion retry {completion_retries}: {task_label}",
+                )
                 self._accept_task_result_or_raise(
                     result,
                     selected_task,
@@ -226,7 +234,7 @@ class Runner:
             self.log.section(f"review iteration {iteration}")
             head_before = self._git().head_commit()
             result = self.review_agent_executor.run(prompt)
-            self._validate_new_commit_prefix(head_before, "review")
+            self._prefix_new_commits(head_before, "review")
             if not result.ok:
                 raise RuntimeError(describe_failure("gigacode review session", result))
             if result.signal == TASK_FAILED:
@@ -242,7 +250,7 @@ class Runner:
             synthesis = self.synthesis_executor.run(
                 self._render_review_synthesis_prompt({"review": structured_output}, context)
             )
-            self._validate_new_commit_prefix(head_before, "review synthesis")
+            self._prefix_new_commits(head_before, "review synthesis")
             if not synthesis.ok:
                 raise RuntimeError(describe_failure("gigacode review synthesis", synthesis))
             if synthesis.signal == TASK_FAILED:
@@ -262,7 +270,7 @@ class Runner:
             }
             head_before = self._git().head_commit()
             results = self.review_agent_executor.run_batch(prompts)
-            self._validate_new_commit_prefix(head_before, "parallel review")
+            self._prefix_new_commits(head_before, "parallel review")
             findings: dict[str, str] = {}
             for name in REVIEW_AGENTS:
                 result = results[name]
@@ -279,7 +287,7 @@ class Runner:
             synthesis = self.synthesis_executor.run(
                 self._render_review_synthesis_prompt(findings, context)
             )
-            self._validate_new_commit_prefix(head_before, "review synthesis")
+            self._prefix_new_commits(head_before, "review synthesis")
             if not synthesis.ok:
                 raise RuntimeError(describe_failure("gigacode review synthesis", synthesis))
             if synthesis.signal == TASK_FAILED:
@@ -296,7 +304,7 @@ class Runner:
         head_before = self._git().head_commit()
         dirty_before = self._uncommitted_paths()
         result = self.finalize_executor.run(render(self.options.prompts.finalize, self._context()))
-        self._validate_new_commit_prefix(head_before, "finalize")
+        self._prefix_new_commits(head_before, "finalize")
         if not result.ok:
             raise RuntimeError(describe_failure("gigacode finalize session", result))
         if result.signal == FINALIZE_FAILED:
@@ -420,10 +428,6 @@ class Runner:
                 f"task {self._task_label(selected_task)} left new uncommitted changes "
                 f"in the working tree: {paths}"
             )
-        self._validate_new_commit_prefix(
-            head_before,
-            f"task {self._task_label(selected_task)}",
-        )
 
     def _accept_task_result_or_raise(
         self,
@@ -709,7 +713,7 @@ class Runner:
         retry = self.review_agent_executor.run(
             render_review_format_retry_prompt(result.output)
         )
-        self._validate_new_commit_prefix(head_before, f"review format retry: {name}")
+        self._prefix_new_commits(head_before, f"review format retry: {name}")
         if retry.ok:
             try:
                 return normalize_review_output(retry.output)
@@ -729,7 +733,7 @@ class Runner:
         fallback = self.review_agent_executor.run(
             render_review_prompt(self.options.prompts.review, context)
         )
-        self._validate_new_commit_prefix(head_before, f"fallback reviewer: {name}")
+        self._prefix_new_commits(head_before, f"fallback reviewer: {name}")
         if not fallback.ok:
             raise RuntimeError(describe_failure("gigacode fallback reviewer", fallback))
         try:
@@ -775,20 +779,23 @@ class Runner:
         except ReviewOutputError as exc:
             raise RuntimeError(f"invalid structured review output: {exc}") from exc
 
-    def _validate_new_commit_prefix(self, head_before: str, label: str) -> None:
+    def _prefix_new_commits(self, head_before: str, label: str) -> None:
         if not self.options.jira_task:
             return
-        subjects = self._git().commit_subjects_since(head_before)
-        missing = [
-            subject
-            for subject in subjects
-            if not subject.startswith(f"{self.options.jira_task} ")
-        ]
-        if missing:
-            joined = "; ".join(missing)
+        try:
+            changed = self._git().prefix_commit_messages_since(
+                head_before,
+                self.options.jira_task,
+            )
+        except GitError as exc:
             raise RuntimeError(
-                f"{label} created commits without required Jira prefix "
-                f"{self.options.jira_task}: {joined}"
+                f"{label} could not add Jira prefix {self.options.jira_task}: {exc}"
+            ) from exc
+        if changed:
+            self.log.diagnostic(
+                "session=git event=commit_messages_prefixed "
+                f"label={label!r} jira_task={self.options.jira_task} "
+                f"count={len(changed)}"
             )
 
 

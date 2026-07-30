@@ -124,7 +124,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--jira-task",
         help=(
             "Jira task key or number; enforces feature/<task>-... branch names "
-            "and requires new commits to start with the task"
+            "and prefixes new commit messages with the task"
         ),
     )
     parser.add_argument("--worktree", action="store_true", help="run the plan in an isolated git worktree")

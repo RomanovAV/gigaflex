@@ -919,7 +919,7 @@ class RunnerTest(unittest.TestCase):
 
             runner.run_tasks()
 
-    def test_task_iteration_rejects_commit_without_jira_prefix(self) -> None:
+    def test_task_iteration_adds_jira_prefix_to_commit_message(self) -> None:
         with temporary_repo() as (repo, plan):
             def complete_and_commit_without_prefix(_prompt):
                 plan.write_text(plan.read_text(encoding="utf-8").replace("- [ ]", "- [x]"), encoding="utf-8")
@@ -939,8 +939,20 @@ class RunnerTest(unittest.TestCase):
                 ProgressLog(repo / "progress.txt"),
             )
 
-            with self.assertRaisesRegex(RuntimeError, "without required Jira prefix"):
-                runner.run_tasks()
+            runner.run_tasks()
+
+            self.assertEqual(
+                "PROJ-123 feat: complete task",
+                subprocess.run(
+                    ["git", "log", "-1", "--format=%s"],
+                    cwd=repo,
+                    check=True,
+                    text=True,
+                    stdout=subprocess.PIPE,
+                ).stdout.strip(),
+            )
+            progress = (repo / "progress.txt").read_text(encoding="utf-8")
+            self.assertIn("event=commit_messages_prefixed", progress)
 
     def test_task_iteration_accepts_commit_with_jira_prefix(self) -> None:
         with temporary_repo() as (repo, plan):

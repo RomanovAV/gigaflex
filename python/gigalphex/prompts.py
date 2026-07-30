@@ -148,12 +148,6 @@ Required checklist correction:
 - leave no new uncommitted changes and do not modify or mark any later task section
 """
 
-JIRA_COMMIT_GUIDANCE = """Jira commit policy:
-- every commit created in this phase must start exactly with `{jira_task} `
-- keep the conventional-commit type after the Jira key, for example: `{jira_task} feat: implement selected task`
-- before reporting success, inspect every commit created in this phase and verify its subject has the required prefix
-"""
-
 MAKE_PLAN_PROMPT = """Create an implementation plan for this request:
 
 {plan_request}
@@ -546,11 +540,6 @@ def render_task_prompt(
                     task_title=task_title,
                 ),
             )
-    if context.jira_task:
-        rendered = _with_guidance(
-            rendered,
-            JIRA_COMMIT_GUIDANCE.format(jira_task=context.jira_task),
-        )
     return _with_guidance(rendered, TASK_FORMAT_GUIDANCE)
 
 
@@ -684,11 +673,6 @@ def render_review_synthesis_prompt(
         agent_findings=findings_payload,
         **_context_values(context),
     )
-    if context.jira_task:
-        rendered = _with_guidance(
-            rendered,
-            JIRA_COMMIT_GUIDANCE.format(jira_task=context.jira_task),
-        )
     if not uses_findings:
         return rendered
     return _with_guidance(rendered, REVIEW_SYNTHESIS_TRUST_GUIDANCE)

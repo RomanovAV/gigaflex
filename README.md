@@ -176,8 +176,8 @@ PYTHONPATH=python python3 -m gigalphex.cli docs/plans/my-feature.md
 
 To enforce corporate Jira naming for a plan run, pass `--jira-task`. For
 example, this switches or creates a branch like
-`feature/PROJ-123-my-feature` and requires every new commit created during the
-run to start with `PROJ-123 `:
+`feature/PROJ-123-my-feature` and automatically adds `PROJ-123 ` to every new
+commit created during the run:
 
 ```bash
 PYTHONPATH=python python3 -m gigalphex.cli docs/plans/my-feature.md \
@@ -385,7 +385,9 @@ Git behavior:
 
 - plan runs create/switch to a branch derived from the plan filename
 - `--jira-task TASK` enforces `feature/TASK-<description>` branch names for
-  plan creation and execution, and all new commits must start with `TASK `
+  plan creation and execution, and automatically prefixes new commit messages
+  with `TASK `; adding a missing prefix rewrites the new local commit objects,
+  so their SHAs change before the run continues
 - `--worktree` runs full and tasks-only plan execution in
   `.gigalphex/worktrees/<branch>` instead of switching the current checkout
 - `--branch` overrides the branch name for normal branch switching and
