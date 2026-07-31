@@ -225,7 +225,8 @@ the local `.gigalphex/config` automatically. Dry runs and review-only runs do
 not auto-create it. Local prompt templates are not created automatically,
 because their presence overrides the global prompt with the same filename.
 Initialization also creates or updates `.gitignore` with `.DS_Store` and
-`.gigalphex/progress/`, so local progress logs stay out of normal commits.
+`.gigalphex/progress/` and `.gigalphex/worktrees/`, so local runtime artifacts
+stay out of normal commits.
 
 Create editable project-specific prompt overrides only when needed:
 

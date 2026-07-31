@@ -8,18 +8,21 @@
 `gigalphex` - это небольшой Python-раннер поверх GigaCode CLI. Он не заменяет
 GigaCode, а задает ему рабочий цикл:
 
-1. Создать или прочитать markdown-план.
-2. Найти первый незавершенный раздел `### Task N:`, `### Iteration N:`,
-   `### Задача N:` или `### Итерация N:`.
+1. Принять обычный markdown-план, готовый Superpowers implementation plan или
+   локальную OpenSpec change-директорию.
+2. В обычном плане найти первый незавершенный раздел `### Task N:`,
+   `### Iteration N:`, `### Задача N:` или `### Итерация N:`; в OpenSpec —
+   следующую незавершённую группу из `tasks.md`.
 3. Запустить GigaCode на выполнение ровно одного такого раздела.
 4. Попросить GigaCode изменить код, обновить тесты, выполнить проверки,
-   отметить готовые чекбоксы `[x]` и сделать git-коммит.
+   отметить готовые чекбоксы `[x]` или OpenSpec marker и сделать git-коммит.
 5. Повторять, пока задачи не закончатся.
 6. После полного выполнения запустить ревью: пять специализированных
    review-агентов, затем synthesis/fix-проход.
 
-Главный артефакт работы - plan-файл с чекбоксами. Главный след исполнения -
-progress log в `.gigalphex/progress/`.
+Главный артефакт работы — plan-файл с чекбоксами или OpenSpec `tasks.md`.
+Текущий статус виден в self-contained HTML dashboard, а полный след исполнения
+остаётся в progress log внутри `.gigalphex/progress/`.
 
 ## Перед первым запуском
 
@@ -115,14 +118,41 @@ PYTHONPATH=/path/to/gigalphex/python python3 -m gigalphex.cli docs/plans/2026061
 успешного полного прогона plan-файл будет перенесен в
 `docs/plans/completed/`.
 
+## Если проект уже использует OpenSpec или Superpowers
+
+OpenSpec change запускается целиком:
+
+```bash
+PYTHONPATH=/path/to/gigalphex/python python3 -m gigalphex.cli \
+  --openspec openspec/changes/add-search
+```
+
+GigaLphex изменяет чеклист `tasks.md`, а `proposal.md`, `design.md` и
+`specs/**/*.md` передаёт агенту как read-only контекст. Каждая группа
+`## N. ...` выполняется отдельной итерацией. Локализованные task-секции без
+чекбоксов тоже поддерживаются: после выполнения появляется явный
+`- [x] N. <название>` marker. Change автоматически не архивируется; успешный
+прогон печатает команду `openspec archive <change-name>`.
+
+Готовый Superpowers implementation plan можно передать как обычный plan-файл:
+
+```bash
+PYTHONPATH=/path/to/gigalphex/python python3 -m gigalphex.cli \
+  docs/superpowers/plans/20260701-add-search.md
+```
+
 ## Как понимать результат
 
-Смотрите три места:
+Смотрите четыре места:
 
 - `git log --oneline --decorate -10` - появились ли коммиты по задачам и ревью.
 - `git status --short` - остались ли незакоммиченные изменения.
-- `.gigalphex/progress/progress-<plan-name>.txt` - что делал GigaCode и на чем
-  остановился.
+- `.gigalphex/progress/status-<run>.html` — live dashboard с фазами, задачами,
+  активными сессиями, retries, временем и известными токенами.
+- `.gigalphex/progress/progress-<run>.txt` — подробный transcript и диагностика.
+
+Рядом также лежит `status-<run>.json` с тем же состоянием для интеграций и
+`stats-<run>.json` со статистикой попыток.
 
 Нормальный успешный прогон обычно выглядит так:
 
@@ -197,10 +227,25 @@ PYTHONPATH=/path/to/gigalphex/python python3 -m gigalphex.cli docs/plans/2026061
 PYTHONPATH=/path/to/gigalphex/python python3 -m gigalphex.cli docs/plans/20260617-add-health-check-endpoint.md --allow-dirty
 ```
 
+Включить корпоративную Jira-политику веток и коммитов:
+
+```bash
+PYTHONPATH=/path/to/gigalphex/python python3 -m gigalphex.cli \
+  docs/plans/20260617-add-health-check-endpoint.md \
+  --jira-task PROJ-123
+```
+
+Runner создаст ветку `feature/PROJ-123-...` и автоматически добавит
+`PROJ-123 ` к новым commit subjects, если агент не сделал этого сам.
+
 После каждого недемо-запуска смотрите путь в строке `statistics:`. CLI печатает
 абсолютный путь к JSON-файлу статистики, например
 `/repo/.gigalphex/progress/stats-review.json`; при interrupt файл всё равно
 должен остаться со статусом `interrupted`.
+
+Если выбранная через `*_model` модель отвечает `Model not found`, GigaLphex
+повторяет тот же prompt без `--model` и использует default-модель GigaCode в
+последующих вызовах. Событие fallback видно в progress log и dashboard.
 
 ## Паттерны хороших задач
 

@@ -35,6 +35,9 @@ PYTHONPATH=/path/to/gigalphex/python python3 -m gigalphex.cli \
 GigaLphex использует `proposal.md`, `design.md` и `specs/**/*.md` как контекст,
 а чекбоксы в `tasks.md` — как выполняемые задачи. После завершения он покажет
 команду `openspec archive <change-name>`, но не архивирует change автоматически.
+Если генератор создал локализованные task-секции без чекбоксов, GigaLphex тоже
+сможет их выполнить и добавит под завершённой секцией устойчивый marker
+`- [x] N. <название>`.
 
 ## Путь 2: Superpowers
 
@@ -98,6 +101,8 @@ PYTHONPATH=/path/to/gigalphex/python python3 -m gigalphex.cli \
 
 ## Где смотреть результат
 
-- текущий статус и dashboard — в `.gigalphex/progress/`;
+- live dashboard — в `.gigalphex/progress/status-<run>.html`;
+- тот же статус для интеграций — в `.gigalphex/progress/status-<run>.json`;
+- подробный transcript — в `.gigalphex/progress/progress-<run>.txt`;
 - созданные коммиты — через `git log --oneline`;
 - оставшиеся изменения — через `git status --short`.

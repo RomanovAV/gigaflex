@@ -1,5 +1,10 @@
 # Диагностика shell approval: GigaCode или GigaLphex
 
+> Исторический сценарий регрессии для GigaCode 26.5.17. Он остаётся полезен
+> именно для диагностики non-interactive shell approval; актуальные способы
+> запуска OpenSpec, dashboard и общий обзор CLI описаны в `README.md` и
+> `docs/real-task-testing-guide.md`.
+
 Сценарий предназначен для быстрой проверки 22 июня 2026 года. Он последовательно
 проверяет сам GigaCode, запуск с захваченным выводом, Python executor и полный
 цикл GigaLphex.

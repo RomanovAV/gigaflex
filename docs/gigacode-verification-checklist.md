@@ -135,6 +135,9 @@ Expected:
 - The checkbox in the plan is marked `[x]`.
 - A new commit is created after `initial commit`.
 - The command exits successfully and prints `progress log: ...`.
+- The command prints `dashboard: .../status-20260612-smoke.html`.
+- `status-20260612-smoke.html` is self-contained and shows the completed run;
+  `status-20260612-smoke.json` has `"status": "success"`.
 - The progress log contains `<<<GIGALPHEX:ALL_TASKS_DONE>>>` or a clear success
   path, not `<<<GIGALPHEX:TASK_FAILED>>>`.
 
@@ -146,6 +149,7 @@ git status --short
 cat docs/plans/20260612-smoke.md
 cat SMOKE_TEST.md
 cat .gigalphex/progress/progress-20260612-smoke.txt
+cat .gigalphex/progress/status-20260612-smoke.json
 ```
 
 Notes:
@@ -336,6 +340,27 @@ Notes:
 ```text
 
 ```
+
+## 11. Verify OpenSpec Change Execution
+
+Create a minimal local change containing `proposal.md`, `tasks.md`, and one
+delta spec, then run:
+
+```bash
+PYTHONPATH=/path/to/gigalphex/python python3 -m gigalphex.cli \
+  --openspec openspec/changes/approval-smoke \
+  --tasks-only
+```
+
+Expected:
+
+- `tasks.md` is used as the writable checklist.
+- `proposal.md`, `design.md` when present, and `specs/**/*.md` are treated as
+  read-only task context.
+- Each numbered `## N. ...` task group is one iteration.
+- The completed change is not moved or archived automatically.
+- The CLI prints `ready to archive with: openspec archive approval-smoke`.
+- Dashboard and statistics files use the change name.
 
 ## Things to Watch Closely
 

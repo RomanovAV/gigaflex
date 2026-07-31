@@ -621,6 +621,238 @@
       color: #737c8a;
     }
 
+    .source-flow {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+      margin-top: 22px;
+    }
+
+    .source-card {
+      min-height: 154px;
+      padding: 15px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #252830;
+    }
+
+    .source-card strong {
+      display: block;
+      margin: 10px 0 7px;
+      color: var(--text);
+      font-size: 18px;
+    }
+
+    .source-card p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.38;
+    }
+
+    .source-card code {
+      color: var(--cyan);
+      font-family: var(--mono);
+      font-size: 12px;
+    }
+
+    .source-arrow {
+      display: inline-grid;
+      place-items: center;
+      width: 29px;
+      height: 29px;
+      border-radius: 7px;
+      color: #101317;
+      font-family: var(--mono);
+      font-weight: 900;
+      background: var(--blue);
+    }
+
+    .source-card:nth-child(2) .source-arrow { background: var(--orange); }
+    .source-card:nth-child(3) .source-arrow { background: var(--green); }
+
+    .flow-result {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      margin-top: 13px;
+      padding: 11px 14px;
+      border: 1px solid rgba(66, 217, 200, 0.45);
+      border-radius: 8px;
+      color: var(--cyan);
+      background: rgba(66, 217, 200, 0.07);
+      font-family: var(--mono);
+      font-size: 13px;
+    }
+
+    .dashboard-preview {
+      border: 1px solid #28313b;
+      border-radius: 9px;
+      padding: 18px;
+      background:
+        radial-gradient(circle at 20% 0%, #17212a 0, #0b0d10 30rem);
+      box-shadow: var(--shadow);
+      color: #eef3f7;
+      font-size: 11px;
+    }
+
+    .dashboard-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      align-items: flex-start;
+      margin-bottom: 13px;
+    }
+
+    .dashboard-eyebrow {
+      color: #7ce2b1;
+      font-size: 9px;
+      font-weight: 800;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+    }
+
+    .dashboard-head h3 {
+      margin: 4px 0 2px;
+      max-width: 330px;
+      font-size: 22px;
+      line-height: 1.08;
+    }
+
+    .dashboard-head p {
+      margin: 0;
+      color: #8d99a6;
+    }
+
+    .dashboard-status {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      padding: 6px 9px;
+      border: 1px solid #28313b;
+      border-radius: 999px;
+      white-space: nowrap;
+      background: #101419;
+      font-weight: 700;
+    }
+
+    .dashboard-status::before {
+      content: "";
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: #79b8ff;
+      box-shadow: 0 0 0 4px rgba(121, 184, 255, 0.10);
+    }
+
+    .dashboard-phases {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 7px;
+      margin-bottom: 9px;
+    }
+
+    .dashboard-phase,
+    .dashboard-column {
+      border: 1px solid #28313b;
+      border-radius: 9px;
+      background: linear-gradient(180deg, #14191f, #101419);
+    }
+
+    .dashboard-phase {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      padding: 8px 9px;
+    }
+
+    .dashboard-phase span {
+      display: grid;
+      place-items: center;
+      width: 16px;
+      height: 16px;
+      border: 1px solid #40505e;
+      border-radius: 50%;
+      color: #7ce2b1;
+      font-size: 9px;
+    }
+
+    .dashboard-phase b,
+    .dashboard-phase small {
+      display: block;
+    }
+
+    .dashboard-phase small {
+      color: #8d99a6;
+      text-transform: capitalize;
+    }
+
+    .dashboard-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1.45fr) minmax(150px, 0.85fr);
+      gap: 9px;
+    }
+
+    .dashboard-column {
+      padding: 11px;
+    }
+
+    .dashboard-column h4 {
+      margin: 0 0 8px;
+      font-size: 12px;
+    }
+
+    .dashboard-task,
+    .dashboard-session {
+      padding: 7px 0;
+      border-top: 1px solid #28313b;
+    }
+
+    .dashboard-task:first-of-type,
+    .dashboard-session:first-of-type {
+      padding-top: 0;
+      border-top: 0;
+    }
+
+    .dashboard-task b,
+    .dashboard-session b {
+      display: block;
+    }
+
+    .dashboard-task span,
+    .dashboard-session span {
+      color: #8d99a6;
+    }
+
+    .dashboard-current b {
+      color: #79b8ff;
+    }
+
+    .dashboard-metrics {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 7px;
+      margin-top: 8px;
+    }
+
+    .dashboard-metric {
+      padding: 8px;
+      border: 1px solid #28313b;
+      border-radius: 7px;
+      background: #0d1116;
+    }
+
+    .dashboard-metric b {
+      display: block;
+      font-size: 14px;
+    }
+
+    .dashboard-metric span {
+      color: #8d99a6;
+      font-size: 9px;
+    }
+
     .links-panel {
       padding: 14px;
       border: 1px solid var(--line);
@@ -867,8 +1099,14 @@
       .lead { font-size: 16px; }
       .pipeline,
       .feature-grid,
+      .source-flow,
       .split-list,
       .matrix {
+        grid-template-columns: 1fr;
+      }
+
+      .dashboard-grid,
+      .dashboard-phases {
         grid-template-columns: 1fr;
       }
 
@@ -954,11 +1192,11 @@
         <div>
           <p class="kicker">10 минут - функциональность проекта</p>
           <h1>gigalphex: управляемый автономный цикл поверх <span class="headline-emphasis">GigaCode CLI</span></h1>
-          <p class="lead">Проект превращает обычный агентский запуск в воспроизводимый процесс: план, одна задача за итерацию, коммит, review-фан-аут, synthesis/fix и финальная проверка.</p>
-          <div class="talk-time">0:00 - 0:50</div>
+          <p class="lead">OpenSpec change, Superpowers plan или обычный markdown превращаются в один воспроизводимый процесс: задача, проверка, коммит, review и финализация — с живым статусом в браузере.</p>
+          <div class="talk-time">0:00 - 0:45</div>
           <div class="tag-line">
-            <span class="tag blue">Python CLI</span>
-            <span class="tag green">Markdown plans</span>
+            <span class="tag blue">OpenSpec</span>
+            <span class="tag green">Live dashboard</span>
             <span class="tag orange">Parallel review</span>
             <span class="tag purple">Git workflow</span>
           </div>
@@ -972,8 +1210,8 @@
           <div class="editor">
             <div class="line-numbers">1<br>2<br>3<br>4<br>5<br>6<br>7<br>8<br>9</div>
             <div class="code-lines">
-              <div class="code-line"><span class="token-key">phase</span> = <span class="token-str">"plan"</span></div>
-              <div class="code-line"><span class="token-fn">select</span>(first_uncompleted_task)</div>
+              <div class="code-line"><span class="token-key">source</span> = <span class="token-str">"openspec | plan"</span></div>
+              <div class="code-line"><span class="token-fn">open_dashboard</span>(status.html)</div>
               <div class="code-line"><span class="token-fn">run</span>(gigacode, one_task)</div>
               <div class="code-line"><span class="token-fn">validate</span>(tests, checklist)</div>
               <div class="code-line"><span class="token-fn">commit</span>(task_result)</div>
@@ -999,7 +1237,7 @@
             <li>Успех требует проверки, обновленного чеклиста и коммита.</li>
             <li>Ревью и финализация выполняются отдельными фазами, а не “на глаз”.</li>
           </ul>
-          <div class="talk-time">0:50 - 1:45</div>
+          <div class="talk-time">0:45 - 1:30</div>
         </div>
         <div class="visual-panel">
           <div class="terminal-title">
@@ -1030,86 +1268,77 @@
       </div>
     </section>
 
-    <section class="slide" data-title="Пайплайн">
+    <section class="slide" data-title="Три входа">
       <div class="slide-frame wide">
         <div>
-          <p class="kicker">Основной сценарий</p>
-          <h2>Пайплайн выглядит как маленькая CI-система для агентской разработки</h2>
-          <p class="lead">Каждая фаза имеет собственный prompt, модель, лимиты, логику retry и ожидания по результату.</p>
+          <p class="kicker">Один runner, разные источники задач</p>
+          <h2>OpenSpec, Superpowers и обычный план входят в один и тот же пайплайн</h2>
+          <p class="lead">Формат входа не меняет контракт выполнения: выбрать одну задачу, проверить результат, зафиксировать его в Git и пройти quality gate.</p>
         </div>
-        <div class="pipeline" aria-label="gigalphex pipeline">
-          <article class="pipeline-step">
-            <span class="step-index">1</span>
-            <h3>Plan</h3>
-            <p>Создать или прочитать markdown-план в `docs/plans/`.</p>
+        <div class="source-flow" aria-label="Источники задач gigalphex">
+          <article class="source-card">
+            <span class="source-arrow">O</span>
+            <strong>OpenSpec change</strong>
+            <p><code>--openspec openspec/changes/...</code><br>Берём `tasks.md`; proposal, design и delta specs остаются контекстом.</p>
           </article>
-          <article class="pipeline-step">
-            <span class="step-index">2</span>
-            <h3>Task loop</h3>
-            <p>Выбрать первый незавершенный `Task` или `Задача`.</p>
+          <article class="source-card">
+            <span class="source-arrow">S</span>
+            <strong>Superpowers plan</strong>
+            <p>Implementation plan запускается напрямую. Design spec можно преобразовать встроенным skill.</p>
           </article>
-          <article class="pipeline-step">
-            <span class="step-index">3</span>
-            <h3>Validate + commit</h3>
-            <p>Выполнить код, тесты, чекбоксы и атомарный коммит.</p>
-          </article>
-          <article class="pipeline-step">
-            <span class="step-index">4</span>
-            <h3>Review fan-out</h3>
-            <p>Запустить пять read-only review-агентов параллельно.</p>
-          </article>
-          <article class="pipeline-step">
-            <span class="step-index">5</span>
-            <h3>Synthesis + finalize</h3>
-            <p>Проверить claims, исправить подтвержденное, закрыть прогон.</p>
+          <article class="source-card">
+            <span class="source-arrow">M</span>
+            <strong>Markdown plan</strong>
+            <p>Русские и английские `Task`, `Iteration`, `Задача`, `Итерация` с чекбоксами.</p>
           </article>
         </div>
-        <div class="talk-time">1:45 - 2:45</div>
+        <div class="flow-result">task loop → validate + commit → parallel review → synthesis + finalize</div>
+        <div class="talk-time">1:30 - 2:15</div>
       </div>
     </section>
 
-    <section class="slide" data-title="План">
+    <section class="slide" data-title="OpenSpec">
       <div class="slide-frame">
         <div>
-          <p class="kicker">План как контракт</p>
-          <h2>Главный артефакт - markdown-план с чекбоксами</h2>
-          <p class="lead">Runner понимает английские и русские заголовки: `Task`, `Iteration`, `Задача`, `Итерация`. Это важно для локальных команд, где планы пишутся на русском, но исполняются тем же механизмом.</p>
+          <p class="kicker">OpenSpec execution</p>
+          <h2>Change остаётся источником истины, а GigaLphex исполняет его по группам</h2>
+          <p class="lead">`--openspec` принимает директорию change, а не отдельный файл. Изменяемым чеклистом остаётся только `tasks.md`; остальные артефакты защищены как read-only контекст.</p>
           <ul class="bullets">
-            <li>Выполняется только первый незакрытый task-раздел.</li>
-            <li>Поздние задачи нельзя отмечать или менять раньше времени.</li>
-            <li>Чекбокс `[x]` разрешен только после реализации и проверки.</li>
-            <li>При retry план возвращается к снимку начала итерации.</li>
+            <li>Каждая группа `## N. ...` — отдельная агентская итерация и коммит.</li>
+            <li>Локализованные секции без чекбоксов получают устойчивый marker `- [x]` после выполнения.</li>
+            <li>Ветка и имена progress-файлов строятся из имени change.</li>
+            <li>Архивация остаётся явным шагом: runner печатает `openspec archive &lt;change&gt;`.</li>
           </ul>
-          <div class="talk-time">2:45 - 3:45</div>
+          <div class="talk-time">2:15 - 3:20</div>
         </div>
         <div class="ide-panel plan-visual">
           <div class="ide-tabs">
-            <div class="tab active"><span class="file-dot"></span>20260701-feature.md</div>
+            <div class="tab active"><span class="file-dot"></span>openspec/changes/add-search</div>
           </div>
           <div class="plan-body">
             <div class="plan-row">
+              <span class="checkbox">·</span>
+              <span class="row-label">proposal.md + design.md</span>
+              <span class="row-tag">read-only</span>
+            </div>
+            <div class="plan-row">
+              <span class="checkbox">·</span>
+              <span class="row-label">specs/search/spec.md</span>
+              <span class="row-tag">read-only</span>
+            </div>
+            <div class="plan-row">
               <span class="checkbox done">✓</span>
-              <span class="row-label">Задача 1: подготовить конфигурацию</span>
+              <span class="row-label">tasks.md · 1. Подготовить API</span>
               <span class="row-tag">done</span>
             </div>
             <div class="plan-row">
               <span class="checkbox next"></span>
-              <span class="row-label">Задача 2: реализовать поведение</span>
+              <span class="row-label">tasks.md · 2. Реализовать поиск</span>
               <span class="row-tag active">selected</span>
             </div>
             <div class="plan-row">
               <span class="checkbox"></span>
-              <span class="row-label">Добавить или обновить тесты</span>
-              <span class="row-tag active">scope</span>
-            </div>
-            <div class="plan-row">
-              <span class="checkbox"></span>
-              <span class="row-label">Запустить validation-команды</span>
-              <span class="row-tag active">scope</span>
-            </div>
-            <div class="plan-row">
-              <span class="checkbox"></span>
-              <span class="row-label">Задача 3: документация и polish</span>
+              <span class="row-label">tasks.md · 3. Проверить миграцию</span>
               <span class="row-tag">locked</span>
             </div>
           </div>
@@ -1121,8 +1350,8 @@
       <div class="slide-frame">
         <div>
           <p class="kicker">Task execution</p>
-          <h2>Одна итерация - один контролируемый агентский запуск</h2>
-          <p class="lead">gigalphex не пытается заменить интеллект GigaCode. Он задает жесткий контракт вокруг запуска: scope, validation, commit, отсутствие новых незакоммиченных изменений.</p>
+          <h2>Одна итерация — один контролируемый агентский запуск</h2>
+          <p class="lead">gigalphex задаёт жёсткий контракт вокруг запуска: scope, validation, commit и чистое рабочее дерево. Если агент вернулся “успешно”, но не закрыл контракт, он получает корректирующий retry.</p>
           <div class="feature-grid">
             <article class="feature-tile">
               <div class="feature-icon">S</div>
@@ -1141,21 +1370,21 @@
             </article>
             <article class="feature-tile">
               <div class="feature-icon">R</div>
-              <h3>Retry guard</h3>
-              <p>Транзиентные ошибки и rate limits обрабатываются отдельно от настоящего failure.</p>
+              <h3>Corrective retry</h3>
+              <p>Неполный результат повторяется с конкретным списком: marker, checklist, commit или dirty tree.</p>
             </article>
             <article class="feature-tile">
-              <div class="feature-icon">L</div>
-              <h3>Progress log</h3>
-              <p>Лог пишет lifecycle событий без утечки содержимого prompt.</p>
+              <div class="feature-icon">M</div>
+              <h3>Model fallback</h3>
+              <p>Если настроенная модель недоступна, prompt повторяется с default-моделью GigaCode.</p>
             </article>
             <article class="feature-tile">
               <div class="feature-icon">T</div>
-              <h3>Statistics</h3>
-              <p>JSON рядом с логом хранит время, модели, токены и статус прогона.</p>
+              <h3>Trace + stats</h3>
+              <p>Лог и JSON фиксируют lifecycle, retries, модели, время, токены и итоговый статус.</p>
             </article>
           </div>
-          <div class="talk-time">3:45 - 5:00</div>
+          <div class="talk-time">3:20 - 4:40</div>
         </div>
         <div class="terminal-panel">
           <div class="terminal-title">
@@ -1176,11 +1405,59 @@
       </div>
     </section>
 
+    <section class="slide" data-title="Live UI">
+      <div class="slide-frame">
+        <div>
+          <p class="kicker">Наблюдаемость без отдельного сервера</p>
+          <h2>Live dashboard показывает фактическое состояние прогона</h2>
+          <p class="lead">При старте рядом с progress log создаются self-contained HTML и JSON. Страница обновляется каждые две секунды, пока раннер работает.</p>
+          <ul class="bullets">
+            <li>Фазы tasks, review и finalize видны отдельно.</li>
+            <li>Показываются текущая задача, чекбоксы и параллельные сессии.</li>
+            <li>Retries, model fallback, ошибки, elapsed time и известные токены не теряются в полном transcript.</li>
+            <li>JSON даёт тот же state будущим интеграциям.</li>
+          </ul>
+          <div class="talk-time">4:40 - 5:45</div>
+        </div>
+        <div class="dashboard-preview" aria-label="Пример live dashboard GigaLphex">
+          <div class="dashboard-head">
+            <div>
+              <div class="dashboard-eyebrow">GigaLphex progress</div>
+              <h3>Add search filters</h3>
+              <p>Working on task 2: Implement filters</p>
+            </div>
+            <div class="dashboard-status">Running · 4m 18s</div>
+          </div>
+          <div class="dashboard-phases">
+            <div class="dashboard-phase"><span>●</span><div><b>Tasks</b><small>running</small></div></div>
+            <div class="dashboard-phase"><span></span><div><b>Review</b><small>pending</small></div></div>
+            <div class="dashboard-phase"><span></span><div><b>Finalize</b><small>pending</small></div></div>
+          </div>
+          <div class="dashboard-grid">
+            <div class="dashboard-column">
+              <h4>Plan progress</h4>
+              <div class="dashboard-task"><b>✓ 1. Prepare API</b><span>3 of 3 checklist items</span></div>
+              <div class="dashboard-task dashboard-current"><b>● 2. Implement filters</b><span>2 of 4 checklist items</span></div>
+              <div class="dashboard-task"><b>3. Update docs</b><span>0 of 2 checklist items</span></div>
+            </div>
+            <div class="dashboard-column">
+              <h4>Active sessions</h4>
+              <div class="dashboard-session"><b>task</b><span>running · activity 3s ago</span></div>
+              <div class="dashboard-metrics">
+                <div class="dashboard-metric"><b>28,420</b><span>tokens</span></div>
+                <div class="dashboard-metric"><b>1 / 3</b><span>tasks complete</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <section class="slide" data-title="Review">
       <div class="slide-frame">
         <div>
           <p class="kicker">Quality gate</p>
-          <h2>Ревью - это параллельная команда специалистов</h2>
+          <h2>Ревью — это параллельная команда специалистов</h2>
           <p class="lead">По умолчанию запускаются пять read-only review-агентов. Они возвращают машинно-валидируемые findings, а synthesis-фаза независимо проверяет claims и только потом исправляет код.</p>
           <ul class="bullets">
             <li>`quality` ищет баги, регрессии и безопасность.</li>
@@ -1189,7 +1466,7 @@
             <li>`simplification` ловит лишнюю сложность.</li>
             <li>`documentation` смотрит docs, comments и user-facing изменения.</li>
           </ul>
-          <div class="talk-time">5:00 - 6:05</div>
+          <div class="talk-time">5:45 - 6:50</div>
         </div>
         <div>
           <div class="review-ring" aria-label="parallel review agents">
@@ -1216,7 +1493,7 @@
         <div>
           <p class="kicker">Operational controls</p>
           <h2>Проект заботится о рабочем дереве, ветках и корпоративных правилах</h2>
-          <p class="lead">Это особенно важно для реальных задач, где запуск агента должен уважать текущую ветку, Jira-префиксы, worktree-изоляцию и политику dirty working tree.</p>
+          <p class="lead">Запуск уважает текущую ветку, Jira-политику, worktree-изоляцию и dirty guard. Новые commit subjects получают Jira-префикс автоматически — даже если агент его забыл.</p>
           <div class="split-list">
             <div class="mini-panel">
               <h3>Git hygiene</h3>
@@ -1228,14 +1505,14 @@
             </div>
             <div class="mini-panel">
               <h3>Jira policy</h3>
-              <p>`--jira-task PROJ-123` навязывает `feature/PROJ-123-...` и префикс commit subject.</p>
+              <p>`--jira-task PROJ-123` навязывает `feature/PROJ-123-...` и переписывает новые локальные коммиты с нужным префиксом.</p>
             </div>
             <div class="mini-panel">
               <h3>Timeouts and retries</h3>
               <p>Session timeout, idle timeout, retry patterns, rate limit patterns и ожидание перед повтором.</p>
             </div>
           </div>
-          <div class="talk-time">6:05 - 7:10</div>
+          <div class="talk-time">6:50 - 7:50</div>
         </div>
         <div class="terminal-panel">
           <div class="terminal-title">
@@ -1263,16 +1540,16 @@
     <section class="slide" data-title="Конфигурация">
       <div class="slide-frame">
         <div>
-          <p class="kicker">Настраиваемость</p>
-          <h2>Все важные границы вынесены в конфиг, env и CLI flags</h2>
-          <p class="lead">gigalphex не требует “магического” SDK. Его контракт - командная строка GigaCode и набор настраиваемых prompt templates.</p>
+          <p class="kicker">Настраиваемая оркестрация</p>
+          <h2>GigaLphex управляет циклом, а GigaCode остаётся средой исполнения</h2>
+          <p class="lead">Никакого отдельного SDK: контрактом остаётся GigaCode CLI. Auth, sandbox, tools, workspace и custom skills продолжают работать внутри уже настроенной среды.</p>
           <ul class="bullets">
             <li>Приоритет: embedded defaults, global config, project config, explicit config, `GIGALPHEX_*`, CLI.</li>
             <li>Для фаз можно выбрать разные модели: plan, task, review, finalize.</li>
             <li>Prompt overrides лежат глобально или локально в `.gigalphex/prompts/`.</li>
-            <li>`--gigacode-arg` прокидывает существующие флаги GigaCode в каждый запуск.</li>
+            <li>`--gigacode-arg` прокидывает корпоративные флаги GigaCode, включая include-directories.</li>
           </ul>
-          <div class="talk-time">7:10 - 8:00</div>
+          <div class="talk-time">7:50 - 9:05</div>
         </div>
         <div class="ide-panel">
           <div class="ide-tabs">
@@ -1297,61 +1574,18 @@
       </div>
     </section>
 
-    <section class="slide" data-title="Сосуществование">
-      <div class="slide-frame wide">
-        <div>
-          <p class="kicker">Как жить рядом с существующей инфраструктурой</p>
-          <h2>gigalphex не заменяет настроенный GigaCode-стек. Он становится внешним оркестратором.</h2>
-          <p class="lead">Смысл интеграции: оставить внутри GigaCode уже настроенные доступы, sandbox, tools, subagents и custom skills, а наружу добавить воспроизводимый жизненный цикл задачи.</p>
-        </div>
-        <div class="feature-grid">
-          <article class="feature-tile">
-            <div class="feature-icon">C</div>
-            <h3>CLI boundary</h3>
-            <p>Вызов идет через `gigacode` в `PATH`. Auth, workspace, approvals и sandbox остаются на стороне GigaCode.</p>
-          </article>
-          <article class="feature-tile">
-            <div class="feature-icon">A</div>
-            <h3>Subagents inside</h3>
-            <p>Если в GigaCode уже настроены внутренние subagents, они продолжают работать внутри task/review/finalize-сессий.</p>
-          </article>
-          <article class="feature-tile">
-            <div class="feature-icon">S</div>
-            <h3>Custom skills</h3>
-            <p>Собственные skills остаются в каталоге GigaCode. `--skill-dir` позволяет явно указать нужное место.</p>
-          </article>
-          <article class="feature-tile">
-            <div class="feature-icon">P</div>
-            <h3>Planning skill</h3>
-            <p>Встроенный skill нужен только для интерактивного создания планов и ставится как обычный GigaCode skill.</p>
-          </article>
-          <article class="feature-tile">
-            <div class="feature-icon">M</div>
-            <h3>Models per phase</h3>
-            <p>План, задачи, read-only review, synthesis и finalize можно вести разными моделями.</p>
-          </article>
-          <article class="feature-tile">
-            <div class="feature-icon">I</div>
-            <h3>Existing flags</h3>
-            <p>`--gigacode-arg` прокидывает корпоративные настройки, например include-directories или ограничения tools.</p>
-          </article>
-        </div>
-        <div class="talk-time">8:00 - 9:20</div>
-      </div>
-    </section>
-
     <section class="slide" data-title="Финал">
       <div class="slide-frame">
         <div>
           <p class="kicker">Итог</p>
           <h2>Главная идея: агентская разработка становится <span class="accent-cyan">проверяемым процессом</span></h2>
-          <p class="lead">gigalphex дает простой продуктовый слой вокруг GigaCode: план как контракт, progress log как наблюдаемость, Git как журнал решений, review-агенты как quality gate.</p>
+          <p class="lead">gigalphex даёт продуктовый слой вокруг GigaCode: OpenSpec или план как контракт, live dashboard как наблюдаемость, Git как журнал решений, review-агенты как quality gate.</p>
           <ul class="bullets">
             <li>Для разработчика: меньше ручной координации и больше прозрачности.</li>
             <li>Для команды: повторяемый сценарий запуска на реальных задачах.</li>
             <li>Для инфраструктуры: совместимость через существующий GigaCode CLI и skills.</li>
           </ul>
-          <div class="talk-time">9:20 - 10:00</div>
+          <div class="talk-time">9:05 - 10:00</div>
         </div>
         <div class="links-panel">
           <div class="links-title">

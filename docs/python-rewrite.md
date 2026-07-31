@@ -1,18 +1,28 @@
 # Python rewrite notes
 
-## Core functions preserved
+## Current core functions
 
-- Parse markdown plans with `### Task N:` / `### Iteration N:` sections and actionable checkboxes.
+- Parse English and Russian markdown plans with `Task`, `Iteration`, `Задача`,
+  and `Итерация` sections and actionable checkboxes.
+- Execute Superpowers implementation plans directly.
+- Execute local OpenSpec changes through `--openspec`: use `tasks.md` as the
+  writable checklist and pass proposal, design, and delta specs as read-only
+  context. Localized prose-only task groups are tracked with durable completion
+  markers.
 - Create gigalphex-compatible plans from a free-form request.
 - Commit newly created plan files by default when running inside a git
   repository.
 - Commit completed plan moves after a successful full run.
-- Install `.gitignore` entries for `.DS_Store` and `.gigalphex/progress/`
-  during project initialization.
+- Install `.gitignore` entries for `.DS_Store`, `.gigalphex/progress/`, and
+  `.gigalphex/worktrees/` during project initialization.
 - Optionally initialize a missing git repository with `--init-git` and commit
   the initial working tree before execution.
 - Run one task section per agent iteration.
 - Stream agent output to terminal and a progress log.
+- Maintain a self-contained live HTML dashboard and a machine-readable JSON
+  status file beside each progress log.
+- Record per-attempt timing, model, token usage, retry decisions, and final run
+  status in a statistics JSON file.
 - Detect gigalphex completion signals.
 - Run a review loop after tasks.
 - Run five specialist review agents in parallel, then synthesize/fix findings.
@@ -31,13 +41,18 @@
   delay, and review worker limit.
 - Classify transient and rate-limit executor failures with configurable
   patterns, including optional longer waits before rate-limit retries.
+- Retry logically incomplete task completions with a corrective prompt after
+  restoring protected plan/OpenSpec state.
+- Retry `Model not found` failures without the configured model and use the
+  GigaCode default model for later calls.
 - Validate git repository state, detect default branch, create/switch plan branch, and move completed plans.
+- Enforce Jira branch names and automatically prefix new local commit subjects
+  created during a run.
 - Run full and tasks-only plan execution in an isolated git worktree with
   `--worktree`.
 
 ## Intentionally deferred
 
-- Web dashboard.
 - Notifications.
 - External second-model review.
 - Docker wrapper.
