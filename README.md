@@ -314,8 +314,24 @@ Review behavior:
 - reviewers return machine-validated `<FINDING>` blocks with severity,
   category, file, evidence, impact, and a minimal suggested fix
 - malformed review output is rejected instead of being forwarded to synthesis
-- synthesis receives normalized findings inside an explicit untrusted-data
-  boundary and independently verifies every claim against the repository
+- synthesis receives normalized findings with stable `F001`-style identifiers
+  inside an explicit untrusted-data boundary, plus a compact scope containing
+  only the files named by those findings
+- synthesis starts from path-limited diffs and scoped file reads; it may inspect
+  a directly necessary dependency, source, or focused test, but is instructed
+  not to repeat a repository-wide review
+- synthesis must return one machine-validated `fixed`, `rejected`, `confirmed`,
+  or `blocked` decision for every input identifier; missing, duplicate, or
+  invented identifiers and free-form summaries trigger one scoped automatic
+  ledger-reconciliation pass
+- the runner checks that the number and exact set of processed findings match
+  the input; the structured decisions, rather than the completion signal, are
+  authoritative. All-rejected or empty ledgers complete review, fixed or
+  confirmed findings require another specialist pass, and `blocked` stops the
+  run with its reported reason
+- if scoped ledger reconciliation is still malformed, the runner continues to
+  the next normal review iteration instead of immediately requiring user input;
+  the existing `review_iterations` limit remains the final safety bound
 - pass `--base-ref REF` to compare `REF...HEAD`; without it, the default branch
   is auto-detected
 - reviewers only inspect and report findings; they do not edit or commit

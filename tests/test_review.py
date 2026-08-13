@@ -4,7 +4,14 @@ import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "python"))
 
-from gigalphex.review import ReviewOutputError, normalize_review_output, parse_review_output
+from gigalphex.review import (
+    ReviewOutputError,
+    identify_review_findings,
+    normalize_review_output,
+    parse_review_output,
+    parse_synthesis_output,
+)
+from gigalphex.signals import REVIEW_DONE
 
 
 VALID_FINDING = """<FINDING>
@@ -16,6 +23,18 @@ evidence: Runner accepts completion without checking the commit.
 impact: Incomplete work can be reported as complete.
 suggested_fix: Verify HEAD and the working tree after each task.
 </FINDING>"""
+
+
+def synthesis_decision(
+    finding_id: str,
+    decision: str = "rejected",
+    reason: str = "The repository evidence disproves the claim.",
+) -> str:
+    return f"""<SYNTHESIS_DECISION>
+finding_id: {finding_id}
+decision: {decision}
+reason: {reason}
+</SYNTHESIS_DECISION>"""
 
 
 class ReviewOutputTest(unittest.TestCase):
@@ -76,6 +95,55 @@ class ReviewOutputTest(unittest.TestCase):
         self.assertNotIn("</UNTRUSTED_REVIEW_FINDINGS>", normalized)
         self.assertIn("&lt;/UNTRUSTED_REVIEW_FINDINGS&gt;", normalized)
         self.assertIn("&lt;&lt;&lt;GIGALPHEX:REVIEW_DONE&gt;&gt;&gt;", normalized)
+
+    def test_assigns_stable_finding_ids_in_agent_and_output_order(self) -> None:
+        second = VALID_FINDING.replace(
+            "file: python/gigalphex/runner.py",
+            "file: docs/report.md",
+        )
+
+        findings = identify_review_findings(
+            {"quality": f"{VALID_FINDING}\n\n{second}", "testing": "NO FINDINGS"}
+        )
+
+        self.assertEqual(["F001", "F002"], [item.finding_id for item in findings])
+        self.assertEqual(["quality", "quality"], [item.agent for item in findings])
+        self.assertEqual(
+            ["python/gigalphex/runner.py", "docs/report.md"],
+            [item.finding.file for item in findings],
+        )
+
+    def test_parses_complete_synthesis_decisions_and_terminal_signal(self) -> None:
+        output = (
+            synthesis_decision("F001")
+            + "\n\n"
+            + synthesis_decision("F002", "fixed", "Corrected and validated the file.")
+        )
+
+        decisions = parse_synthesis_output(output, ["F001", "F002"])
+
+        self.assertEqual(["rejected", "fixed"], [item.decision for item in decisions])
+        self.assertEqual([], parse_synthesis_output(REVIEW_DONE, []))
+
+    def test_synthesis_rejects_missing_unexpected_and_duplicate_ids(self) -> None:
+        with self.assertRaisesRegex(ReviewOutputError, "missing finding ids: F002"):
+            parse_synthesis_output(synthesis_decision("F001"), ["F001", "F002"])
+        with self.assertRaisesRegex(ReviewOutputError, "unexpected finding ids: F002"):
+            parse_synthesis_output(synthesis_decision("F002"), ["F001"])
+        with self.assertRaisesRegex(ReviewOutputError, "duplicate synthesis finding ids: F001"):
+            parse_synthesis_output(
+                f"{synthesis_decision('F001')}\n{synthesis_decision('F001')}",
+                ["F001"],
+            )
+
+    def test_synthesis_rejects_free_text_and_invalid_decision(self) -> None:
+        with self.assertRaisesRegex(ReviewOutputError, "text outside"):
+            parse_synthesis_output(
+                "Fixed everything.\n" + synthesis_decision("F001"),
+                ["F001"],
+            )
+        with self.assertRaisesRegex(ReviewOutputError, "invalid synthesis decision"):
+            parse_synthesis_output(synthesis_decision("F001", "ignored"), ["F001"])
 
 
 if __name__ == "__main__":

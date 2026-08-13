@@ -20,10 +20,16 @@ from .prompts import (
     render_review_format_retry_prompt,
     render_review_prompt,
     render_review_synthesis_prompt,
+    render_review_synthesis_recovery_prompt,
     render_task_completion_retry_prompt,
     render_task_prompt,
 )
-from .review import ReviewOutputError, normalize_review_output
+from .review import (
+    ReviewOutputError,
+    identify_review_findings,
+    normalize_review_output,
+    parse_synthesis_output,
+)
 from .signals import (
     ALL_TASKS_DONE,
     FINALIZE_DONE,
@@ -255,7 +261,7 @@ class Runner:
                 raise RuntimeError(describe_failure("gigacode review synthesis", synthesis))
             if synthesis.signal == TASK_FAILED:
                 raise RuntimeError("review failed")
-            if synthesis.signal == REVIEW_DONE:
+            if self._accept_review_synthesis_or_raise(synthesis, {"review": structured_output}):
                 return
             time.sleep(self.options.delay_seconds)
         raise RuntimeError(f"max review iterations reached: {self.options.review_iterations}")
@@ -292,7 +298,7 @@ class Runner:
                 raise RuntimeError(describe_failure("gigacode review synthesis", synthesis))
             if synthesis.signal == TASK_FAILED:
                 raise RuntimeError("review failed")
-            if synthesis.signal == REVIEW_DONE:
+            if self._accept_review_synthesis_or_raise(synthesis, findings):
                 return
             time.sleep(self.options.delay_seconds)
         raise RuntimeError(f"max review iterations reached: {self.options.review_iterations}")
@@ -778,6 +784,93 @@ class Runner:
             )
         except ReviewOutputError as exc:
             raise RuntimeError(f"invalid structured review output: {exc}") from exc
+
+    def _accept_review_synthesis_or_raise(
+        self,
+        result: ExecResult,
+        findings: dict[str, str],
+    ) -> bool:
+        identified = identify_review_findings(findings)
+        expected_ids = [item.finding_id for item in identified]
+        try:
+            decisions = parse_synthesis_output(result.output, expected_ids)
+        except ReviewOutputError as first_error:
+            self.log.diagnostic(
+                "session=review-synthesis event=invalid_output "
+                f"action=reconcile error={str(first_error)!r}"
+            )
+            self.log.section("review synthesis reconciliation")
+            head_before = self._git().head_commit()
+            recovery = self.synthesis_executor.run(
+                render_review_synthesis_recovery_prompt(
+                    self.options.prompts.review_synthesis,
+                    findings,
+                    self._context(),
+                    result.output,
+                    str(first_error),
+                )
+            )
+            self._prefix_new_commits(head_before, "review synthesis reconciliation")
+            if not recovery.ok or recovery.signal == TASK_FAILED:
+                reason = (
+                    "reported task failure"
+                    if recovery.signal == TASK_FAILED
+                    else describe_failure("gigacode review synthesis reconciliation", recovery)
+                )
+                self.log.diagnostic(
+                    "session=review-synthesis event=reconciliation_failed "
+                    f"action=next_review_iteration reason={reason!r}"
+                )
+                return False
+            try:
+                decisions = parse_synthesis_output(recovery.output, expected_ids)
+            except ReviewOutputError as recovery_error:
+                self.log.diagnostic(
+                    "session=review-synthesis event=invalid_output "
+                    "action=next_review_iteration "
+                    f"error={str(recovery_error)!r}"
+                )
+                return False
+            result = recovery
+
+        counts = {
+            decision: sum(item.decision == decision for item in decisions)
+            for decision in ("fixed", "rejected", "confirmed", "blocked")
+        }
+        self.log.diagnostic(
+            "session=review-synthesis event=decisions_validated "
+            f"input_findings={len(identified)} processed_findings={len(decisions)} "
+            + " ".join(f"{name}={count}" for name, count in counts.items())
+        )
+
+        blocked = [decision for decision in decisions if decision.decision == "blocked"]
+        if blocked:
+            details = "; ".join(
+                f"{decision.finding_id}: {decision.reason}" for decision in blocked
+            )
+            raise RuntimeError(f"review synthesis blocked: {details}")
+
+        requires_another_pass = [
+            decision
+            for decision in decisions
+            if decision.decision in {"fixed", "confirmed"}
+        ]
+        completed = not decisions or all(
+            decision.decision == "rejected" for decision in decisions
+        )
+        if result.signal == REVIEW_DONE and requires_another_pass:
+            ids = ",".join(
+                decision.finding_id for decision in requires_another_pass
+            )
+            self.log.diagnostic(
+                "session=review-synthesis event=premature_completion_signal_ignored "
+                f"findings={ids!r}"
+            )
+        elif completed and result.signal != REVIEW_DONE:
+            self.log.diagnostic(
+                "session=review-synthesis event=completion_inferred_from_decisions"
+            )
+        return completed
 
     def _prefix_new_commits(self, head_before: str, label: str) -> None:
         if not self.options.jira_task:

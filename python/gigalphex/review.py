@@ -5,10 +5,17 @@ from html import escape
 from pathlib import PurePosixPath
 import re
 
+from .signals import REVIEW_DONE
+
 
 FINDING_BLOCK_RE = re.compile(r"<FINDING>\s*(.*?)\s*</FINDING>", re.DOTALL)
+SYNTHESIS_DECISION_BLOCK_RE = re.compile(
+    r"<SYNTHESIS_DECISION>\s*(.*?)\s*</SYNTHESIS_DECISION>",
+    re.DOTALL,
+)
 FIELD_RE = re.compile(r"^([a-z_]+):[ \t]*(.*)$")
 ALLOWED_SEVERITIES = {"blocker", "major", "minor"}
+ALLOWED_SYNTHESIS_DECISIONS = {"confirmed", "rejected", "fixed", "blocked"}
 ALLOWED_CATEGORIES = {
     "complexity",
     "correctness",
@@ -36,6 +43,7 @@ REQUIRED_FIELDS = (
 MAX_FINDINGS = 20
 MAX_OUTPUT_CHARS = 100_000
 MAX_FIELD_CHARS = 4_000
+SYNTHESIS_DECISION_FIELDS = ("finding_id", "decision", "reason")
 
 
 class ReviewOutputError(ValueError):
@@ -51,6 +59,20 @@ class ReviewFinding:
     evidence: str
     impact: str
     suggested_fix: str
+
+
+@dataclass(frozen=True)
+class IdentifiedReviewFinding:
+    finding_id: str
+    agent: str
+    finding: ReviewFinding
+
+
+@dataclass(frozen=True)
+class SynthesisDecision:
+    finding_id: str
+    decision: str
+    reason: str
 
 
 def parse_review_output(text: str) -> list[ReviewFinding]:
@@ -99,6 +121,73 @@ def render_review_output(findings: list[ReviewFinding]) -> str:
 
 def normalize_review_output(text: str) -> str:
     return render_review_output(parse_review_output(text))
+
+
+def identify_review_findings(outputs: dict[str, str]) -> list[IdentifiedReviewFinding]:
+    identified: list[IdentifiedReviewFinding] = []
+    for agent, output in outputs.items():
+        try:
+            findings = parse_review_output(output)
+        except ReviewOutputError as exc:
+            raise ReviewOutputError(f"{agent}: {exc}") from exc
+        for finding in findings:
+            identified.append(
+                IdentifiedReviewFinding(
+                    finding_id=f"F{len(identified) + 1:03d}",
+                    agent=agent,
+                    finding=finding,
+                )
+            )
+    return identified
+
+
+def parse_synthesis_output(
+    text: str,
+    expected_finding_ids: list[str],
+) -> list[SynthesisDecision]:
+    stripped = text.strip()
+    if len(stripped) > MAX_OUTPUT_CHARS:
+        raise ReviewOutputError("synthesis output is too large")
+
+    body = stripped
+    if body == REVIEW_DONE:
+        body = ""
+    elif body.endswith(f"\n{REVIEW_DONE}"):
+        body = body[: -len(REVIEW_DONE)].rstrip()
+
+    matches = list(SYNTHESIS_DECISION_BLOCK_RE.finditer(body))
+    remainder = SYNTHESIS_DECISION_BLOCK_RE.sub("", body)
+    if remainder.strip():
+        raise ReviewOutputError(
+            "synthesis output contains text outside <SYNTHESIS_DECISION> blocks"
+        )
+
+    decisions = [_parse_synthesis_decision(match.group(1)) for match in matches]
+    actual_ids = [decision.finding_id for decision in decisions]
+    duplicate_ids = sorted(
+        finding_id for finding_id in set(actual_ids) if actual_ids.count(finding_id) > 1
+    )
+    if duplicate_ids:
+        raise ReviewOutputError(
+            f"duplicate synthesis finding ids: {', '.join(duplicate_ids)}"
+        )
+
+    expected = set(expected_finding_ids)
+    actual = set(actual_ids)
+    missing = sorted(expected - actual)
+    unexpected = sorted(actual - expected)
+    problems: list[str] = []
+    if missing:
+        problems.append(f"missing finding ids: {', '.join(missing)}")
+    if unexpected:
+        problems.append(f"unexpected finding ids: {', '.join(unexpected)}")
+    if problems:
+        raise ReviewOutputError("; ".join(problems))
+    if len(decisions) != len(expected_finding_ids):
+        raise ReviewOutputError(
+            "synthesis decision count does not match the input finding count"
+        )
+    return decisions
 
 
 def _parse_finding_block(block: str) -> ReviewFinding:
@@ -150,6 +239,49 @@ def _parse_finding_block(block: str) -> ReviewFinding:
         evidence=values["evidence"],
         impact=values["impact"],
         suggested_fix=values["suggested_fix"],
+    )
+
+
+def _parse_synthesis_decision(block: str) -> SynthesisDecision:
+    values: dict[str, str] = {}
+    for raw_line in block.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        match = FIELD_RE.match(line)
+        if not match:
+            raise ReviewOutputError(f"invalid synthesis decision line: {line[:80]}")
+        field, value = match.groups()
+        if field not in SYNTHESIS_DECISION_FIELDS:
+            raise ReviewOutputError(f"unknown synthesis decision field: {field}")
+        if field in values:
+            raise ReviewOutputError(f"duplicate synthesis decision field: {field}")
+        value = value.strip()
+        if not value:
+            raise ReviewOutputError(f"empty synthesis decision field: {field}")
+        if len(value) > MAX_FIELD_CHARS:
+            raise ReviewOutputError(f"synthesis decision field is too long: {field}")
+        values[field] = value
+
+    missing = [field for field in SYNTHESIS_DECISION_FIELDS if field not in values]
+    if missing:
+        raise ReviewOutputError(
+            f"missing synthesis decision fields: {', '.join(missing)}"
+        )
+
+    finding_id = values["finding_id"]
+    if not re.fullmatch(r"F[0-9]{3}", finding_id):
+        raise ReviewOutputError("finding_id must use the runner-assigned FNNN form")
+    decision = values["decision"].lower()
+    if decision not in ALLOWED_SYNTHESIS_DECISIONS:
+        allowed = ", ".join(sorted(ALLOWED_SYNTHESIS_DECISIONS))
+        raise ReviewOutputError(
+            f"invalid synthesis decision {values['decision']!r}; expected one of: {allowed}"
+        )
+    return SynthesisDecision(
+        finding_id=finding_id,
+        decision=decision,
+        reason=values["reason"],
     )
 
 

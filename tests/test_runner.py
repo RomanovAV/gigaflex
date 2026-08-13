@@ -40,6 +40,29 @@ class CallbackExecutor:
         return self.callback(prompt)
 
 
+VALID_REVIEW_FINDING = """<FINDING>
+severity: major
+category: correctness
+file: docs/report.md
+line: 12
+evidence: The reported total does not match the source rows.
+impact: Readers receive an incorrect analytical result.
+suggested_fix: Recalculate the total from the named source rows.
+</FINDING>"""
+
+
+def synthesis_decision(
+    finding_id: str,
+    decision: str,
+    reason: str = "Verified against the scoped repository evidence.",
+) -> str:
+    return f"""<SYNTHESIS_DECISION>
+finding_id: {finding_id}
+decision: {decision}
+reason: {reason}
+</SYNTHESIS_DECISION>"""
+
+
 class RunnerTest(unittest.TestCase):
     def test_parallel_review_runs_agents_then_synthesis(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -147,8 +170,9 @@ class RunnerTest(unittest.TestCase):
 
             self.assertEqual(2, len(executor.single_prompts))
             self.assertIn("this session may inspect and report only", executor.single_prompts[0])
-            self.assertIn('<REVIEW agent="review">\nNO FINDINGS', executor.single_prompts[1])
+            self.assertIn("<REVIEW_SCOPE>", executor.single_prompts[1])
             self.assertIn("<UNTRUSTED_REVIEW_FINDINGS>", executor.single_prompts[1])
+            self.assertNotIn("<SYNTHESIS_FINDING", executor.single_prompts[1])
 
     def test_review_agents_can_use_a_separate_read_only_executor(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -176,6 +200,158 @@ class RunnerTest(unittest.TestCase):
             self.assertEqual(0, len(review_agent_executor.single_prompts))
             self.assertEqual(0, len(synthesis_executor.batch_prompts))
             self.assertEqual(1, len(synthesis_executor.single_prompts))
+
+    def test_synthesis_accepts_all_rejected_findings_with_completion_signal(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            runner = Runner(
+                RunOptions(
+                    plan_file=None,
+                    progress_file=tmp_path / "progress.txt",
+                    review_only=True,
+                    finalize_enabled=False,
+                ),
+                FakeExecutor(),  # type: ignore[arg-type]
+                ProgressLog(tmp_path / "progress.txt"),
+            )
+            output = synthesis_decision("F001", "rejected") + f"\n{REVIEW_DONE}"
+
+            completed = runner._accept_review_synthesis_or_raise(  # noqa: SLF001
+                ExecResult(output=output, signal=REVIEW_DONE),
+                {"implementation": VALID_REVIEW_FINDING},
+            )
+
+            self.assertTrue(completed)
+            progress = (tmp_path / "progress.txt").read_text(encoding="utf-8")
+            self.assertIn("input_findings=1 processed_findings=1", progress)
+            self.assertIn("rejected=1", progress)
+
+    def test_synthesis_fixed_finding_requires_another_review_pass(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            runner = Runner(
+                RunOptions(None, tmp_path / "progress.txt", finalize_enabled=False),
+                FakeExecutor(),  # type: ignore[arg-type]
+                ProgressLog(tmp_path / "progress.txt"),
+            )
+
+            completed = runner._accept_review_synthesis_or_raise(  # noqa: SLF001
+                ExecResult(output=synthesis_decision("F001", "fixed")),
+                {"quality": VALID_REVIEW_FINDING},
+            )
+
+            self.assertFalse(completed)
+
+    def test_synthesis_infers_completion_after_rejecting_all_findings(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            runner = Runner(
+                RunOptions(None, tmp_path / "progress.txt", finalize_enabled=False),
+                FakeExecutor(),  # type: ignore[arg-type]
+                ProgressLog(tmp_path / "progress.txt"),
+            )
+
+            completed = runner._accept_review_synthesis_or_raise(  # noqa: SLF001
+                ExecResult(output=synthesis_decision("F001", "rejected")),
+                {"quality": VALID_REVIEW_FINDING},
+            )
+
+            self.assertTrue(completed)
+            progress = (tmp_path / "progress.txt").read_text(encoding="utf-8")
+            self.assertIn("completion_inferred_from_decisions", progress)
+
+    def test_synthesis_ignores_premature_completion_with_unresolved_finding(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            runner = Runner(
+                RunOptions(None, tmp_path / "progress.txt", finalize_enabled=False),
+                FakeExecutor(),  # type: ignore[arg-type]
+                ProgressLog(tmp_path / "progress.txt"),
+            )
+            output = synthesis_decision("F001", "confirmed") + f"\n{REVIEW_DONE}"
+
+            completed = runner._accept_review_synthesis_or_raise(  # noqa: SLF001
+                ExecResult(output=output, signal=REVIEW_DONE),
+                {"quality": VALID_REVIEW_FINDING},
+            )
+
+            self.assertFalse(completed)
+            progress = (tmp_path / "progress.txt").read_text(encoding="utf-8")
+            self.assertIn("premature_completion_signal_ignored", progress)
+
+    def test_synthesis_recovers_missing_finding_decision(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            recovery_prompts: list[str] = []
+
+            def recover(prompt):
+                recovery_prompts.append(prompt)
+                output = (
+                    synthesis_decision("F001", "rejected")
+                    + "\n\n"
+                    + synthesis_decision("F002", "rejected")
+                )
+                return ExecResult(output=output)
+
+            runner = Runner(
+                RunOptions(None, tmp_path / "progress.txt", finalize_enabled=False),
+                FakeExecutor(),  # type: ignore[arg-type]
+                ProgressLog(tmp_path / "progress.txt"),
+                synthesis_executor=CallbackExecutor(recover),  # type: ignore[arg-type]
+            )
+            two_findings = f"{VALID_REVIEW_FINDING}\n\n{VALID_REVIEW_FINDING}"
+
+            completed = runner._accept_review_synthesis_or_raise(  # noqa: SLF001
+                ExecResult(output=synthesis_decision("F001", "rejected")),
+                {"quality": two_findings},
+            )
+
+            self.assertTrue(completed)
+            self.assertEqual(1, len(recovery_prompts))
+            self.assertIn("Automatic synthesis-ledger reconciliation", recovery_prompts[0])
+            self.assertIn("missing finding ids: F002", recovery_prompts[0])
+
+    def test_second_invalid_synthesis_ledger_continues_review_loop(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            runner = Runner(
+                RunOptions(None, tmp_path / "progress.txt", finalize_enabled=False),
+                FakeExecutor(),  # type: ignore[arg-type]
+                ProgressLog(tmp_path / "progress.txt"),
+                synthesis_executor=CallbackExecutor(
+                    lambda _prompt: ExecResult(output="still invalid")
+                ),  # type: ignore[arg-type]
+            )
+
+            completed = runner._accept_review_synthesis_or_raise(  # noqa: SLF001
+                ExecResult(output="invalid ledger"),
+                {"quality": VALID_REVIEW_FINDING},
+            )
+
+            self.assertFalse(completed)
+            progress = (tmp_path / "progress.txt").read_text(encoding="utf-8")
+            self.assertIn("action=next_review_iteration", progress)
+
+    def test_synthesis_blocked_finding_stops_review(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            runner = Runner(
+                RunOptions(None, tmp_path / "progress.txt", finalize_enabled=False),
+                FakeExecutor(),  # type: ignore[arg-type]
+                ProgressLog(tmp_path / "progress.txt"),
+            )
+
+            with self.assertRaisesRegex(RuntimeError, "review synthesis blocked: F001"):
+                runner._accept_review_synthesis_or_raise(  # noqa: SLF001
+                    ExecResult(
+                        output=synthesis_decision(
+                            "F001",
+                            "blocked",
+                            "The authoritative source data is unavailable.",
+                        )
+                    ),
+                    {"quality": VALID_REVIEW_FINDING},
+                )
 
     def test_malformed_review_output_is_not_forwarded_to_synthesis(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
