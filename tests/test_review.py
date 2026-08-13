@@ -47,6 +47,15 @@ class ReviewOutputTest(unittest.TestCase):
         with self.assertRaisesRegex(ReviewOutputError, "invalid severity"):
             parse_review_output(VALID_FINDING.replace("severity: major", "severity: high"))
 
+    def test_accepts_non_code_validation_categories(self) -> None:
+        for category in ("validation", "data_quality", "methodology", "traceability"):
+            with self.subTest(category=category):
+                findings = parse_review_output(
+                    VALID_FINDING.replace("category: correctness", f"category: {category}")
+                )
+
+                self.assertEqual(category, findings[0].category)
+
     def test_rejects_parent_path(self) -> None:
         with self.assertRaisesRegex(ReviewOutputError, "repository-relative"):
             parse_review_output(

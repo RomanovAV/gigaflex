@@ -34,6 +34,9 @@ class SkillsTest(unittest.TestCase):
         self.assertIn("docs/superpowers/specs", text)
         self.assertIn("Remove Superpowers-only process directives", text)
         self.assertIn("Do not include a commit step as a task checkbox", text)
+        self.assertIn("Remove process-only test-first sequencing", text)
+        self.assertIn("Preserve the required automated test coverage", text)
+        self.assertNotIn("Keep TDD requirements", text)
 
     def test_install_is_idempotent_for_bundled_content(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

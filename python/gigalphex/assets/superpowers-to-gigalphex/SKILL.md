@@ -41,9 +41,9 @@ edit product code, create branches, or start an execution loop.
   finishing-branch workflow, and explicit Superpowers ledger updates.
 - Do not include a commit step as a task checkbox. GigaLphex requires each task
   session to commit completed implementation and plan updates itself.
-- Convert very small Superpowers TDD micro-steps into practical gigalphex task
-  checkboxes. Keep TDD requirements when the spec requires them, but avoid
-  turning every RED/GREEN command into a separate gigalphex task.
+- Remove process-only test-first sequencing such as separate RED/GREEN
+  micro-steps. Preserve the required automated test coverage and validation
+  outcomes alongside the behavior they verify.
 - Keep tasks independently committable and mutually exclusive. A later task must
   not repeat implementation, tests, or validation owned by an earlier task.
 - Put tests and validation in the same task as the behavior they verify.

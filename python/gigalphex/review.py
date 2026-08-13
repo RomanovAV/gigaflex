@@ -12,13 +12,17 @@ ALLOWED_SEVERITIES = {"blocker", "major", "minor"}
 ALLOWED_CATEGORIES = {
     "complexity",
     "correctness",
+    "data_quality",
     "documentation",
+    "methodology",
     "performance",
     "regression",
     "reliability",
     "requirements",
     "security",
     "testing",
+    "traceability",
+    "validation",
 }
 REQUIRED_FIELDS = (
     "severity",

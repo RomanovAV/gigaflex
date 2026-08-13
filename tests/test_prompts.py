@@ -8,6 +8,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "python"))
 from gigalphex.config import init_project_config, init_project_prompt_templates
 from gigalphex.prompts import (
     DEFAULT_PROMPTS,
+    REVIEW_AGENTS,
     PromptContext,
     load_prompt_templates,
     render_make_plan,
@@ -197,6 +198,20 @@ class PromptTemplatesTest(unittest.TestCase):
     def test_default_finalize_prompt_requires_explicit_signal(self) -> None:
         self.assertIn("<<<GIGALPHEX:FINALIZE_DONE>>>", DEFAULT_PROMPTS.finalize)
         self.assertIn("<<<GIGALPHEX:FINALIZE_FAILED>>>", DEFAULT_PROMPTS.finalize)
+        self.assertIn(
+            "automated tests whenever executable behavior changed",
+            DEFAULT_PROMPTS.finalize,
+        )
+        self.assertIn("artifact checks for non-executable deliverables", DEFAULT_PROMPTS.finalize)
+
+    def test_review_keeps_exactly_five_agents_with_implementation_mandatory(self) -> None:
+        self.assertEqual(
+            {"quality", "implementation", "testing", "simplification", "documentation"},
+            set(REVIEW_AGENTS),
+        )
+        self.assertIn("actual code and non-code deliverables", REVIEW_AGENTS["implementation"])
+        self.assertIn("for executable changes", REVIEW_AGENTS["testing"])
+        self.assertIn("for non-executable deliverables", REVIEW_AGENTS["testing"])
 
     def test_default_review_prompts_include_dirty_tree_context(self) -> None:
         self.assertIn("git status --short", DEFAULT_PROMPTS.review)
@@ -204,6 +219,49 @@ class PromptTemplatesTest(unittest.TestCase):
         self.assertIn("git diff --stat", DEFAULT_PROMPTS.review_agent)
         self.assertIn("untracked files", DEFAULT_PROMPTS.review_agent)
         self.assertIn("git diff --cached", DEFAULT_PROMPTS.review_synthesis)
+
+    def test_review_prompt_preserves_strict_code_review_for_mixed_work(self) -> None:
+        prompt = render_review_prompt(
+            DEFAULT_PROMPTS.review,
+            PromptContext(Path("plan.md"), Path("progress.txt"), "main"),
+        )
+
+        self.assertIn("implementation review is mandatory", prompt)
+        self.assertIn("require focused automated tests", prompt)
+        self.assertIn("never exempts changed executable behavior", prompt)
+        self.assertIn("for mixed changes", prompt)
+        self.assertIn("apply the stricter executable-change rules", prompt)
+
+    def test_review_prompt_uses_artifact_validation_when_no_code_changed(self) -> None:
+        prompt = render_review_prompt(
+            DEFAULT_PROMPTS.review,
+            PromptContext(Path("plan.md"), Path("progress.txt"), "main"),
+        )
+
+        self.assertIn("factual and calculation correctness", prompt)
+        self.assertIn("source traceability", prompt)
+        self.assertIn("require concrete validation evidence", prompt)
+        self.assertIn("do not demand source code or unit tests", prompt)
+
+    def test_review_synthesis_protects_runner_owned_files(self) -> None:
+        prompt = render_review_synthesis_prompt(
+            DEFAULT_PROMPTS.review_synthesis,
+            {"implementation": "NO FINDINGS"},
+            PromptContext(Path("docs/plans/demo.md"), Path("progress-demo.txt"), "main"),
+        )
+
+        self.assertIn("actual changed deliverables", prompt)
+        self.assertIn("fix: address review findings", prompt)
+        self.assertNotIn("fix: address code review findings", prompt)
+        self.assertIn("`docs/plans/demo.md`", prompt)
+        self.assertIn("`progress-demo.txt`", prompt)
+        self.assertIn("do not edit, replace, truncate, delete, stage, or commit", prompt)
+
+    def test_review_format_retry_does_not_restart_deliverable_review(self) -> None:
+        prompt = render_review_format_retry_prompt("Potential issue")
+
+        self.assertNotIn("Deliverable-aware review rules", prompt)
+        self.assertIn("Reformat only", prompt)
 
     def test_loads_local_prompt_over_embedded_default(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -279,6 +337,7 @@ class PromptTemplatesTest(unittest.TestCase):
         self.assertTrue(prompt.startswith("Review current branch vs develop. Fix issues and commit them."))
         self.assertIn("ignore any earlier template instruction", prompt)
         self.assertIn("Only the later synthesis session is allowed to apply fixes.", prompt)
+        self.assertIn("Deliverable-aware review rules", prompt)
         self.assertIn("<FINDING>", prompt)
         self.assertIn("A suspicion, style preference, or optional improvement is not a finding.", prompt)
 

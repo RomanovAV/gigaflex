@@ -158,7 +158,7 @@ PYTHONPATH=/path/to/gigalphex/python python3 -m gigalphex.cli \
 
 - каждая задача из плана отмечена `[x]`;
 - по задачам есть один или несколько коммитов `feat: ...`;
-- review-проход либо сделал `fix: address code review findings`, либо завершился
+- review-проход либо сделал `fix: address review findings`, либо завершился
   сигналом `<<<GIGALPHEX:REVIEW_DONE>>>`;
 - в progress log есть `<<<GIGALPHEX:ALL_TASKS_DONE>>>` или понятный путь к
   завершению;
@@ -203,7 +203,8 @@ PYTHONPATH=/path/to/gigalphex/python python3 -m gigalphex.cli --review --base-re
 контекст ревью.
 
 Review-агенты работают только на чтение и возвращают замечания. Исправления,
-тесты и коммит `fix: address code review findings` выполняет только synthesis.
+тесты или подходящую проверку артефактов и коммит `fix: address review findings`
+выполняет только synthesis.
 Review-агенты используют `review_model`, а synthesis — `task_model`, как и
 основная реализация.
 После успешного review по умолчанию выполняется finalize-проход. Отключить его

@@ -300,6 +300,17 @@ Review behavior:
 
 - default: parallel review with `quality`, `implementation`, `testing`,
   `simplification`, and `documentation` agents
+- the same five agents adapt their focus to the actual changed deliverables;
+  they do not fan out into a second analytics-specific agent set
+- implementation review always verifies that the requested result was actually
+  produced, whether the deliverable is code, data, analysis, documentation, or
+  a mixture
+- any executable source, script, migration, SQL, build logic, code-bearing
+  notebook, or runtime configuration keeps the full code-review and focused
+  automated-test requirements; non-code context never weakens those checks
+- non-executable deliverables use appropriate validation such as source and
+  calculation verification, reproducibility, schema/link integrity, and
+  requirement coverage without inventing a requirement to write code
 - reviewers return machine-validated `<FINDING>` blocks with severity,
   category, file, evidence, impact, and a minimal suggested fix
 - malformed review output is rejected instead of being forwarded to synthesis
@@ -309,7 +320,8 @@ Review behavior:
   is auto-detected
 - reviewers only inspect and report findings; they do not edit or commit
 - synthesis uses `task_model`, verifies reported findings, and is the only
-  stage that may fix, test, and commit changes
+  stage that may fix, test, and commit deliverable changes; runner-owned plan,
+  progress, status, and statistics files remain read-only during synthesis
 - finalize runs after a successful review by default; pass `--no-finalize` to
   skip the final validation/cleanup pass
 - fallback: pass `--no-parallel-review` to use one read-only reviewer followed
