@@ -59,6 +59,7 @@ class RunOptions:
     plan_source: Optional[Path] = None
     plan_context_files: tuple[Path, ...] = ()
     task_completion_retries: int = 1
+    allow_dirty: bool = False
 
 
 class Runner:
@@ -317,8 +318,12 @@ class Runner:
             raise RuntimeError("finalize failed")
         if result.signal != FINALIZE_DONE:
             raise RuntimeError("finalize did not report successful verification")
-        if self._uncommitted_paths() - dirty_before:
-            raise RuntimeError("finalize left new uncommitted changes in the working tree")
+        new_dirty = self._uncommitted_paths() - dirty_before
+        if new_dirty:
+            if self.options.allow_dirty:
+                self._log_allowed_dirty("finalize", new_dirty)
+            else:
+                raise RuntimeError("finalize left new uncommitted changes in the working tree")
 
     def print_prompts(self) -> None:
         context = self._context()
@@ -429,6 +434,9 @@ class Runner:
             )
         new_dirty = self._uncommitted_paths() - dirty_before
         if new_dirty:
+            if self.options.allow_dirty:
+                self._log_allowed_dirty("task", new_dirty, selected_task)
+                return
             paths = ", ".join(self._display_path(path) for path in sorted(new_dirty))
             raise RuntimeError(
                 f"task {self._task_label(selected_task)} left new uncommitted changes "
@@ -587,7 +595,30 @@ class Runner:
             and later_tasks_unchanged
             and not self._changed_plan_context(context_before)
             and self._git().head_commit() != head_before
-            and not (self._uncommitted_paths() - dirty_before)
+            and (
+                self.options.allow_dirty
+                or not (self._uncommitted_paths() - dirty_before)
+            )
+        )
+
+    def _log_allowed_dirty(
+        self,
+        session: str,
+        paths: set[Path],
+        selected_task: Optional[Task] = None,
+    ) -> None:
+        displayed = [self._display_path(path) for path in sorted(paths)]
+        shown = ", ".join(displayed[:10])
+        if len(displayed) > 10:
+            shown += f", ... ({len(displayed)} total)"
+        task = (
+            f" task={self._task_label(selected_task)!r}"
+            if selected_task is not None
+            else ""
+        )
+        self.log.diagnostic(
+            f"session={session} event=new_uncommitted_changes_allowed{task} "
+            f"count={len(displayed)} paths={shown!r}"
         )
 
     def _describe_task_failure_with_repository_changes(

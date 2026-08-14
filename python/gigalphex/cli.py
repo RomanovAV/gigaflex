@@ -128,7 +128,11 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument("--worktree", action="store_true", help="run the plan in an isolated git worktree")
-    parser.add_argument("--allow-dirty", action="store_true", help="allow starting with uncommitted changes")
+    parser.add_argument(
+        "--allow-dirty",
+        action="store_true",
+        help="allow uncommitted changes at startup and between run phases",
+    )
     parser.add_argument("--no-move-plan", action="store_true", help="do not move completed plan to completed/")
     parser.add_argument("--no-commit-plan", action="store_true", help="do not commit newly created plans")
     finalize_group = parser.add_mutually_exclusive_group()
@@ -741,6 +745,8 @@ def main(argv: Optional[list[str]] = None) -> int:
             log.write(f"retry count: {cfg.retry_count}, retry delay: {cfg.retry_delay}s\n")
         if cfg.wait_on_rate_limit is not None:
             log.write(f"rate limit wait: {cfg.wait_on_rate_limit}s\n")
+        if cfg.allow_dirty:
+            log.write("allow dirty: enabled for startup and phase transitions\n")
         log.write(f"review workers: {cfg.review_workers}\n")
         if args.review:
             log.write(f"review base ref: {cfg.default_branch}\n")
@@ -774,6 +780,7 @@ def main(argv: Optional[list[str]] = None) -> int:
         plan_source=plan_source.source_path if plan_source else None,
         plan_context_files=plan_source.context_paths if plan_source else (),
         task_completion_retries=cfg.retry_count,
+        allow_dirty=cfg.allow_dirty,
     )
 
     exit_code = 0

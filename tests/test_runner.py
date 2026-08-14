@@ -1074,6 +1074,58 @@ class RunnerTest(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "left new uncommitted changes"):
                 runner.run_tasks()
 
+    def test_allow_dirty_continues_after_completed_committed_task_with_new_changes(self) -> None:
+        with temporary_repo() as (repo, plan):
+            def complete_and_leave_dirty(_prompt):
+                plan.write_text(plan.read_text(encoding="utf-8").replace("- [ ]", "- [x]"), encoding="utf-8")
+                git(repo, "add", str(plan))
+                git(repo, "commit", "-m", "feat: complete task")
+                (repo / "leftover.txt").write_text("dirty\n", encoding="utf-8")
+                return ExecResult(output="implemented\n", returncode=0)
+
+            progress = repo / "progress.txt"
+            runner = Runner(
+                RunOptions(
+                    plan_file=plan,
+                    progress_file=progress,
+                    tasks_only=True,
+                    finalize_enabled=False,
+                    allow_dirty=True,
+                ),
+                CallbackExecutor(complete_and_leave_dirty),  # type: ignore[arg-type]
+                ProgressLog(progress),
+            )
+
+            runner.run_tasks()
+
+            self.assertTrue((repo / "leftover.txt").exists())
+            self.assertIn(
+                "session=task event=new_uncommitted_changes_allowed",
+                progress.read_text(encoding="utf-8"),
+            )
+
+    def test_allow_dirty_still_requires_a_task_commit(self) -> None:
+        with temporary_repo() as (repo, plan):
+            def complete_without_commit(_prompt):
+                plan.write_text(plan.read_text(encoding="utf-8").replace("- [ ]", "- [x]"), encoding="utf-8")
+                (repo / "leftover.txt").write_text("dirty\n", encoding="utf-8")
+                return ExecResult(output="implemented\n", returncode=0)
+
+            runner = Runner(
+                RunOptions(
+                    plan_file=plan,
+                    progress_file=repo / "progress.txt",
+                    tasks_only=True,
+                    finalize_enabled=False,
+                    allow_dirty=True,
+                ),
+                CallbackExecutor(complete_without_commit),  # type: ignore[arg-type]
+                ProgressLog(repo / "progress.txt"),
+            )
+
+            with self.assertRaisesRegex(RuntimeError, "without creating a commit"):
+                runner.run_tasks()
+
     def test_task_iteration_accepts_completed_committed_clean_task(self) -> None:
         with temporary_repo() as (repo, plan):
             def complete_and_commit(_prompt):
@@ -1398,6 +1450,34 @@ class RunnerTest(unittest.TestCase):
             )
 
             runner.run_finalize()
+
+    def test_allow_dirty_accepts_new_finalize_changes(self) -> None:
+        with temporary_repo() as (repo, plan):
+            def finalize_and_leave_dirty(_prompt):
+                (repo / "finalize-leftover.txt").write_text("dirty\n", encoding="utf-8")
+                return ExecResult(
+                    output=f"{FINALIZE_DONE}\n",
+                    signal=FINALIZE_DONE,
+                    returncode=0,
+                )
+
+            progress = repo / "progress.txt"
+            runner = Runner(
+                RunOptions(
+                    plan_file=plan,
+                    progress_file=progress,
+                    allow_dirty=True,
+                ),
+                CallbackExecutor(finalize_and_leave_dirty),  # type: ignore[arg-type]
+                ProgressLog(progress),
+            )
+
+            runner.run_finalize()
+
+            self.assertIn(
+                "session=finalize event=new_uncommitted_changes_allowed",
+                progress.read_text(encoding="utf-8"),
+            )
 
 
 class FailureDescriptionTest(unittest.TestCase):

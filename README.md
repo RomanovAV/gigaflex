@@ -14,7 +14,7 @@ This is a small standalone rewrite of the useful ralphex core:
 - run five specialist review agents in parallel, then synthesize/fix findings
 - create/switch a git branch from the plan filename
 - optionally run a plan in an isolated git worktree
-- guard against dirty working trees
+- guard against dirty working trees, with an explicit run-wide override
 - move completed plans into `completed/`
 - call `gigacode` through a configurable CLI boundary
 
@@ -424,8 +424,12 @@ Git behavior:
 - review-only mode does not switch branches
 - `--review --base-ref REF` validates the ref and compares it with the current
   `HEAD`
-- dirty working trees are rejected unless `--allow-dirty` is passed; with
-  `--allow-dirty`, review prompts include committed, staged, unstaged, and
+- dirty working trees are rejected unless `--allow-dirty` is passed
+- `--allow-dirty` applies throughout the run: newly uncommitted paths left by a
+  completed task or finalize pass are logged and carried into the next phase
+  instead of stopping execution; task checklist completion and a task commit
+  are still required
+- with `--allow-dirty`, review prompts include committed, staged, unstaged, and
   untracked changes via `git status --short`, `git diff --cached`, and `git diff`
 - completed full runs move the plan file to `completed/`
 - use `--no-branch` or `--no-move-plan` to disable those steps
