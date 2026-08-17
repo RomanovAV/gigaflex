@@ -138,13 +138,18 @@ def recover_review_output(text: str) -> str:
 
     matches = list(FINDING_BLOCK_RE.finditer(stripped))
     no_findings = list(NO_FINDINGS_LINE_RE.finditer(stripped))
-    if matches and no_findings:
-        raise ReviewOutputError("output ambiguously contains both NO FINDINGS and <FINDING> blocks")
 
     opening_tags = len(FINDING_OPEN_RE.findall(stripped))
     closing_tags = len(FINDING_CLOSE_RE.findall(stripped))
     if opening_tags != len(matches) or closing_tags != len(matches):
         raise ReviewOutputError("output contains an incomplete or nested <FINDING> block")
+
+    if matches and no_findings:
+        if all(not match.group(1).strip() for match in matches):
+            return "NO FINDINGS"
+        raise ReviewOutputError(
+            "output ambiguously contains both NO FINDINGS and non-empty <FINDING> blocks"
+        )
 
     if matches:
         if len(matches) > MAX_FINDINGS:

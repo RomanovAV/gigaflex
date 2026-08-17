@@ -490,7 +490,10 @@ class RunnerTest(unittest.TestCase):
             def review_call(prompt):
                 prompts.append(prompt)
                 return ExecResult(
-                    output="Review complete.\nNO FINDINGS\n[WARN] runtime diagnostic\n"
+                    output=(
+                        "Review complete.\n<FINDING>\n</FINDING>\n"
+                        "NO FINDINGS\n[WARN] runtime diagnostic\n"
+                    )
                 )
 
             review_executor = CallbackExecutor(review_call)

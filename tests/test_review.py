@@ -60,6 +60,16 @@ class ReviewOutputTest(unittest.TestCase):
 
         self.assertEqual("NO FINDINGS", recover_review_output(output))
 
+    def test_recovers_no_findings_with_empty_placeholder_block(self) -> None:
+        output = (
+            "I found no confirmed issues.\n"
+            "<FINDING>\n</FINDING>\n"
+            "I output:\nNO FINDINGS\n"
+            "[WARN] runtime diagnostic\n"
+        )
+
+        self.assertEqual("NO FINDINGS", recover_review_output(output))
+
     def test_recovers_valid_finding_blocks_from_explanatory_text(self) -> None:
         recovered = recover_review_output(f"Confirmed issue:\n{VALID_FINDING}\nSummary.")
 
