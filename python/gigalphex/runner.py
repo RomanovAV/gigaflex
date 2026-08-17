@@ -29,6 +29,8 @@ from .review import (
     identify_review_findings,
     normalize_review_output,
     parse_synthesis_output,
+    recover_review_output,
+    recover_synthesis_output,
 )
 from .signals import (
     ALL_TASKS_DONE,
@@ -249,8 +251,12 @@ class Runner:
             structured_output = self._structured_review_output(
                 "review",
                 result,
-                context,
             )
+            if not identify_review_findings({"review": structured_output}):
+                self.log.diagnostic(
+                    "session=review event=no_findings action=skip_synthesis"
+                )
+                return
 
             self.log.section("review synthesis")
             head_before = self._git().head_commit()
@@ -287,7 +293,13 @@ class Runner:
                     self.log.write(result.error_output)
                 if not result.ok:
                     raise RuntimeError(describe_failure(f"gigacode review agent {name}", result))
-                findings[name] = self._structured_review_output(name, result, context)
+                findings[name] = self._structured_review_output(name, result)
+
+            if not identify_review_findings(findings):
+                self.log.diagnostic(
+                    "session=review event=no_findings action=skip_synthesis"
+                )
+                return
 
             self.log.section("review synthesis")
             head_before = self._git().head_commit()
@@ -735,50 +747,50 @@ class Runner:
         self,
         name: str,
         result: ExecResult,
-        context: PromptContext,
     ) -> str:
         try:
             return normalize_review_output(result.output)
         except ReviewOutputError as first_error:
+            try:
+                recovered = recover_review_output(result.output)
+            except ReviewOutputError as recovery_error:
+                validation_error = str(recovery_error)
+            else:
+                self.log.diagnostic(
+                    "session=review event=output_recovered "
+                    f"agent={name} method=deterministic"
+                )
+                return recovered
             self.log.diagnostic(
                 "session=review event=invalid_output "
-                f"agent={name} action=format_retry error={str(first_error)!r}"
+                f"agent={name} action=format_retry error={str(first_error)!r} "
+                f"recovery_error={validation_error!r}"
             )
 
         self.log.section(f"review format retry: {name}")
         head_before = self._git().head_commit()
         retry = self.review_agent_executor.run(
-            render_review_format_retry_prompt(result.output)
+            render_review_format_retry_prompt(result.output, validation_error)
         )
         self._prefix_new_commits(head_before, f"review format retry: {name}")
-        if retry.ok:
-            try:
-                return normalize_review_output(retry.output)
-            except ReviewOutputError as retry_error:
-                self.log.diagnostic(
-                    "session=review event=invalid_output "
-                    f"agent={name} action=fallback error={str(retry_error)!r}"
-                )
-        else:
-            self.log.diagnostic(
-                "session=review event=format_retry_failed "
-                f"agent={name} reason={describe_failure('review format retry', retry)!r}"
-            )
-
-        self.log.section(f"fallback reviewer: {name}")
-        head_before = self._git().head_commit()
-        fallback = self.review_agent_executor.run(
-            render_review_prompt(self.options.prompts.review, context)
-        )
-        self._prefix_new_commits(head_before, f"fallback reviewer: {name}")
-        if not fallback.ok:
-            raise RuntimeError(describe_failure("gigacode fallback reviewer", fallback))
+        if not retry.ok:
+            raise RuntimeError(describe_failure("gigacode review format retry", retry))
         try:
-            return normalize_review_output(fallback.output)
-        except ReviewOutputError as fallback_error:
-            raise RuntimeError(
-                f"invalid structured review output from fallback reviewer: {fallback_error}"
-            ) from fallback_error
+            return normalize_review_output(retry.output)
+        except ReviewOutputError as retry_error:
+            try:
+                recovered = recover_review_output(retry.output)
+            except ReviewOutputError as recovery_error:
+                raise RuntimeError(
+                    "review protocol invalid after format retry: "
+                    f"{recovery_error}"
+                ) from recovery_error
+            self.log.diagnostic(
+                "session=review event=output_recovered "
+                f"agent={name} method=format_retry_deterministic "
+                f"strict_error={str(retry_error)!r}"
+            )
+            return recovered
 
     def _git(self) -> GitService:
         return GitService(Path("."))
@@ -823,12 +835,28 @@ class Runner:
     ) -> bool:
         identified = identify_review_findings(findings)
         expected_ids = [item.finding_id for item in identified]
+        decisions = None
+        first_validation_error = ""
         try:
             decisions = parse_synthesis_output(result.output, expected_ids)
         except ReviewOutputError as first_error:
+            first_validation_error = str(first_error)
+            try:
+                decisions = recover_synthesis_output(result.output, expected_ids)
+            except ReviewOutputError as recovery_error:
+                validation_error = str(recovery_error)
+            else:
+                self.log.diagnostic(
+                    "session=review-synthesis event=output_recovered "
+                    "method=deterministic"
+                )
+                validation_error = ""
+
+        if decisions is None:
             self.log.diagnostic(
                 "session=review-synthesis event=invalid_output "
-                f"action=reconcile error={str(first_error)!r}"
+                f"action=reconcile error={first_validation_error!r} "
+                f"recovery_error={validation_error!r}"
             )
             self.log.section("review synthesis reconciliation")
             head_before = self._git().head_commit()
@@ -838,7 +866,7 @@ class Runner:
                     findings,
                     self._context(),
                     result.output,
-                    str(first_error),
+                    validation_error,
                 )
             )
             self._prefix_new_commits(head_before, "review synthesis reconciliation")
@@ -856,12 +884,21 @@ class Runner:
             try:
                 decisions = parse_synthesis_output(recovery.output, expected_ids)
             except ReviewOutputError as recovery_error:
+                try:
+                    decisions = recover_synthesis_output(
+                        recovery.output,
+                        expected_ids,
+                    )
+                except ReviewOutputError as final_error:
+                    raise RuntimeError(
+                        "review synthesis protocol invalid after reconciliation: "
+                        f"{final_error}"
+                    ) from final_error
                 self.log.diagnostic(
-                    "session=review-synthesis event=invalid_output "
-                    "action=next_review_iteration "
-                    f"error={str(recovery_error)!r}"
+                    "session=review-synthesis event=output_recovered "
+                    "method=reconciliation_deterministic "
+                    f"strict_error={str(recovery_error)!r}"
                 )
-                return False
             result = recovery
 
         counts = {

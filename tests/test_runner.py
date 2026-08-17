@@ -64,7 +64,7 @@ reason: {reason}
 
 
 class RunnerTest(unittest.TestCase):
-    def test_parallel_review_runs_agents_then_synthesis(self) -> None:
+    def test_parallel_review_skips_synthesis_when_all_agents_are_clean(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             executor = FakeExecutor()
@@ -87,10 +87,11 @@ class RunnerTest(unittest.TestCase):
                 {"quality", "implementation", "testing", "simplification", "documentation"},
                 set(executor.batch_prompts[0]),
             )
-            self.assertEqual(1, len(executor.single_prompts))
-            self.assertIn("specialist review agents", executor.single_prompts[0])
+            self.assertEqual(0, len(executor.single_prompts))
+            progress = (tmp_path / "progress.txt").read_text(encoding="utf-8")
+            self.assertIn("event=no_findings action=skip_synthesis", progress)
 
-    def test_review_uses_synthesis_executor(self) -> None:
+    def test_clean_review_does_not_invoke_synthesis_executor(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             task_executor = FakeExecutor()
@@ -113,7 +114,7 @@ class RunnerTest(unittest.TestCase):
             self.assertEqual(0, len(task_executor.batch_prompts))
             self.assertEqual(0, len(task_executor.single_prompts))
             self.assertEqual(1, len(synthesis_executor.batch_prompts))
-            self.assertEqual(1, len(synthesis_executor.single_prompts))
+            self.assertEqual(0, len(synthesis_executor.single_prompts))
 
     def test_parallel_review_logs_stderr_without_forwarding_it_to_synthesis(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -148,9 +149,9 @@ class RunnerTest(unittest.TestCase):
 
             progress = (tmp_path / "progress.txt").read_text(encoding="utf-8")
             self.assertIn("[WARN] quality", progress)
-            self.assertNotIn("[WARN]", executor.single_prompts[0])
+            self.assertIn("event=no_findings action=skip_synthesis", progress)
 
-    def test_single_review_reports_findings_before_synthesis(self) -> None:
+    def test_single_clean_review_skips_synthesis(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             executor = FakeExecutor()
@@ -168,11 +169,8 @@ class RunnerTest(unittest.TestCase):
 
             runner.run()
 
-            self.assertEqual(2, len(executor.single_prompts))
+            self.assertEqual(1, len(executor.single_prompts))
             self.assertIn("this session may inspect and report only", executor.single_prompts[0])
-            self.assertIn("<REVIEW_SCOPE>", executor.single_prompts[1])
-            self.assertIn("<UNTRUSTED_REVIEW_FINDINGS>", executor.single_prompts[1])
-            self.assertNotIn("<SYNTHESIS_FINDING", executor.single_prompts[1])
 
     def test_review_agents_can_use_a_separate_read_only_executor(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -199,7 +197,7 @@ class RunnerTest(unittest.TestCase):
             self.assertEqual(1, len(review_agent_executor.batch_prompts))
             self.assertEqual(0, len(review_agent_executor.single_prompts))
             self.assertEqual(0, len(synthesis_executor.batch_prompts))
-            self.assertEqual(1, len(synthesis_executor.single_prompts))
+            self.assertEqual(0, len(synthesis_executor.single_prompts))
 
     def test_synthesis_accepts_all_rejected_findings_with_completion_signal(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -260,6 +258,29 @@ class RunnerTest(unittest.TestCase):
             progress = (tmp_path / "progress.txt").read_text(encoding="utf-8")
             self.assertIn("completion_inferred_from_decisions", progress)
 
+    def test_synthesis_recovers_complete_ledger_from_explanatory_text(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            runner = Runner(
+                RunOptions(None, tmp_path / "progress.txt", finalize_enabled=False),
+                FakeExecutor(),  # type: ignore[arg-type]
+                ProgressLog(tmp_path / "progress.txt"),
+            )
+            output = (
+                "I verified the supplied claim.\n"
+                + synthesis_decision("F001", "rejected")
+                + "\nReview complete."
+            )
+
+            completed = runner._accept_review_synthesis_or_raise(  # noqa: SLF001
+                ExecResult(output=output),
+                {"quality": VALID_REVIEW_FINDING},
+            )
+
+            self.assertTrue(completed)
+            progress = (tmp_path / "progress.txt").read_text(encoding="utf-8")
+            self.assertIn("event=output_recovered method=deterministic", progress)
+
     def test_synthesis_ignores_premature_completion_with_unresolved_finding(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -311,7 +332,7 @@ class RunnerTest(unittest.TestCase):
             self.assertIn("Automatic synthesis-ledger reconciliation", recovery_prompts[0])
             self.assertIn("missing finding ids: F002", recovery_prompts[0])
 
-    def test_second_invalid_synthesis_ledger_continues_review_loop(self) -> None:
+    def test_second_invalid_synthesis_ledger_fails_without_full_review_loop(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             runner = Runner(
@@ -323,14 +344,17 @@ class RunnerTest(unittest.TestCase):
                 ),  # type: ignore[arg-type]
             )
 
-            completed = runner._accept_review_synthesis_or_raise(  # noqa: SLF001
-                ExecResult(output="invalid ledger"),
-                {"quality": VALID_REVIEW_FINDING},
-            )
+            with self.assertRaisesRegex(
+                RuntimeError,
+                "review synthesis protocol invalid after reconciliation",
+            ):
+                runner._accept_review_synthesis_or_raise(  # noqa: SLF001
+                    ExecResult(output="invalid ledger"),
+                    {"quality": VALID_REVIEW_FINDING},
+                )
 
-            self.assertFalse(completed)
             progress = (tmp_path / "progress.txt").read_text(encoding="utf-8")
-            self.assertIn("action=next_review_iteration", progress)
+            self.assertNotIn("action=next_review_iteration", progress)
 
     def test_synthesis_blocked_finding_stops_review(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -377,7 +401,7 @@ class RunnerTest(unittest.TestCase):
                 review_agent_executor=review_executor,  # type: ignore[arg-type]
             )
 
-            with self.assertRaisesRegex(RuntimeError, "invalid structured review output"):
+            with self.assertRaisesRegex(RuntimeError, "review protocol invalid"):
                 runner.run_review()
 
             self.assertEqual([], synthesis_executor.single_prompts)
@@ -417,16 +441,16 @@ class RunnerTest(unittest.TestCase):
 
             self.assertEqual(2, len(prompts))
             self.assertIn("<UNTRUSTED_INVALID_REVIEW_OUTPUT>", prompts[1])
-            self.assertEqual(1, len(synthesis_executor.single_prompts))
+            self.assertIn("could not recover", prompts[1])
+            self.assertEqual(0, len(synthesis_executor.single_prompts))
 
-    def test_second_malformed_review_output_uses_fallback_reviewer(self) -> None:
+    def test_second_malformed_review_output_fails_without_full_fallback_review(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             outputs = iter(
                 [
                     ExecResult(output="Review looks clean.\n", returncode=0),
                     ExecResult(output="Still malformed.\n", returncode=0),
-                    ExecResult(output="NO FINDINGS\n", returncode=0),
                 ]
             )
             prompts: list[str] = []
@@ -451,12 +475,44 @@ class RunnerTest(unittest.TestCase):
                 review_agent_executor=review_executor,  # type: ignore[arg-type]
             )
 
+            with self.assertRaisesRegex(RuntimeError, "review protocol invalid"):
+                runner.run_review()
+
+            self.assertEqual(2, len(prompts))
+            self.assertIn("<UNTRUSTED_INVALID_REVIEW_OUTPUT>", prompts[1])
+            self.assertEqual(0, len(synthesis_executor.single_prompts))
+
+    def test_explanatory_no_findings_is_recovered_without_model_retry(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            prompts: list[str] = []
+
+            def review_call(prompt):
+                prompts.append(prompt)
+                return ExecResult(
+                    output="Review complete.\nNO FINDINGS\n[WARN] runtime diagnostic\n"
+                )
+
+            review_executor = CallbackExecutor(review_call)
+            runner = Runner(
+                RunOptions(
+                    plan_file=None,
+                    progress_file=tmp_path / "progress.txt",
+                    review_only=True,
+                    parallel_review=False,
+                    finalize_enabled=False,
+                ),
+                review_executor,  # type: ignore[arg-type]
+                ProgressLog(tmp_path / "progress.txt"),
+                review_agent_executor=review_executor,  # type: ignore[arg-type]
+            )
+
             runner.run_review()
 
-            self.assertEqual(3, len(prompts))
-            self.assertIn("<UNTRUSTED_INVALID_REVIEW_OUTPUT>", prompts[1])
-            self.assertIn("You are the review agent.", prompts[2])
-            self.assertEqual(1, len(synthesis_executor.single_prompts))
+            self.assertEqual(1, len(prompts))
+            progress = (tmp_path / "progress.txt").read_text(encoding="utf-8")
+            self.assertIn("event=output_recovered", progress)
+            self.assertIn("event=no_findings action=skip_synthesis", progress)
 
     def test_completed_plan_does_not_invoke_task_agent(self) -> None:
         with temporary_repo() as (repo, plan):

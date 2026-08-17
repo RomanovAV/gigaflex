@@ -322,6 +322,7 @@ REVIEW_FORMAT_RETRY_PROMPT = """Your previous review response did not satisfy th
 
 Reformat only the concrete review claims from the untrusted response below. Do not add new findings.
 If it contains no concrete finding that can be represented under the contract, output exactly `NO FINDINGS`.
+Validation error: {validation_error}
 
 <UNTRUSTED_INVALID_REVIEW_OUTPUT>
 {review_output}
@@ -685,13 +686,19 @@ def render_review_prompt(template: str, context: PromptContext) -> str:
     return _with_review_guards(render(template, context))
 
 
-def render_review_format_retry_prompt(review_output: str) -> str:
+def render_review_format_retry_prompt(
+    review_output: str,
+    validation_error: str = "not provided",
+) -> str:
     escaped_output = (
         review_output.replace("&", "&amp;")
         .replace("<", "&lt;")
         .replace(">", "&gt;")
     )
-    rendered = REVIEW_FORMAT_RETRY_PROMPT.format(review_output=escaped_output)
+    rendered = REVIEW_FORMAT_RETRY_PROMPT.format(
+        review_output=escaped_output,
+        validation_error=escape(validation_error, quote=False),
+    )
     return _with_review_guards(rendered, include_deliverable_guidance=False)
 
 

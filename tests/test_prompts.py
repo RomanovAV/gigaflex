@@ -259,10 +259,14 @@ class PromptTemplatesTest(unittest.TestCase):
         self.assertIn("do not edit, replace, truncate, delete, stage, or commit", prompt)
 
     def test_review_format_retry_does_not_restart_deliverable_review(self) -> None:
-        prompt = render_review_format_retry_prompt("Potential issue")
+        prompt = render_review_format_retry_prompt(
+            "Potential issue",
+            "line must be a positive integer or unknown",
+        )
 
         self.assertNotIn("Deliverable-aware review rules", prompt)
         self.assertIn("Reformat only", prompt)
+        self.assertIn("line must be a positive integer or unknown", prompt)
 
     def test_loads_local_prompt_over_embedded_default(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

@@ -9,10 +9,15 @@ from .signals import REVIEW_DONE
 
 
 FINDING_BLOCK_RE = re.compile(r"<FINDING>\s*(.*?)\s*</FINDING>", re.DOTALL)
+FINDING_OPEN_RE = re.compile(r"<FINDING>")
+FINDING_CLOSE_RE = re.compile(r"</FINDING>")
+NO_FINDINGS_LINE_RE = re.compile(r"^[ \t]*NO FINDINGS[ \t]*$", re.MULTILINE)
 SYNTHESIS_DECISION_BLOCK_RE = re.compile(
     r"<SYNTHESIS_DECISION>\s*(.*?)\s*</SYNTHESIS_DECISION>",
     re.DOTALL,
 )
+SYNTHESIS_DECISION_OPEN_RE = re.compile(r"<SYNTHESIS_DECISION>")
+SYNTHESIS_DECISION_CLOSE_RE = re.compile(r"</SYNTHESIS_DECISION>")
 FIELD_RE = re.compile(r"^([a-z_]+):[ \t]*(.*)$")
 ALLOWED_SEVERITIES = {"blocker", "major", "minor"}
 ALLOWED_SYNTHESIS_DECISIONS = {"confirmed", "rejected", "fixed", "blocked"}
@@ -123,6 +128,35 @@ def normalize_review_output(text: str) -> str:
     return render_review_output(parse_review_output(text))
 
 
+def recover_review_output(text: str) -> str:
+    """Extract an unambiguous review payload while keeping field validation strict."""
+    stripped = text.strip()
+    if not stripped:
+        raise ReviewOutputError("empty output; expected NO FINDINGS or <FINDING> blocks")
+    if len(stripped) > MAX_OUTPUT_CHARS:
+        raise ReviewOutputError("output is too large")
+
+    matches = list(FINDING_BLOCK_RE.finditer(stripped))
+    no_findings = list(NO_FINDINGS_LINE_RE.finditer(stripped))
+    if matches and no_findings:
+        raise ReviewOutputError("output ambiguously contains both NO FINDINGS and <FINDING> blocks")
+
+    opening_tags = len(FINDING_OPEN_RE.findall(stripped))
+    closing_tags = len(FINDING_CLOSE_RE.findall(stripped))
+    if opening_tags != len(matches) or closing_tags != len(matches):
+        raise ReviewOutputError("output contains an incomplete or nested <FINDING> block")
+
+    if matches:
+        if len(matches) > MAX_FINDINGS:
+            raise ReviewOutputError(f"too many findings; maximum is {MAX_FINDINGS}")
+        return render_review_output(
+            [_parse_finding_block(match.group(1)) for match in matches]
+        )
+    if no_findings:
+        return "NO FINDINGS"
+    raise ReviewOutputError("could not recover NO FINDINGS or a complete <FINDING> block")
+
+
 def identify_review_findings(outputs: dict[str, str]) -> list[IdentifiedReviewFinding]:
     identified: list[IdentifiedReviewFinding] = []
     for agent, output in outputs.items():
@@ -163,6 +197,14 @@ def parse_synthesis_output(
         )
 
     decisions = [_parse_synthesis_decision(match.group(1)) for match in matches]
+    _validate_synthesis_decision_ids(decisions, expected_finding_ids)
+    return decisions
+
+
+def _validate_synthesis_decision_ids(
+    decisions: list[SynthesisDecision],
+    expected_finding_ids: list[str],
+) -> None:
     actual_ids = [decision.finding_id for decision in decisions]
     duplicate_ids = sorted(
         finding_id for finding_id in set(actual_ids) if actual_ids.count(finding_id) > 1
@@ -187,6 +229,34 @@ def parse_synthesis_output(
         raise ReviewOutputError(
             "synthesis decision count does not match the input finding count"
         )
+
+
+def recover_synthesis_output(
+    text: str,
+    expected_finding_ids: list[str],
+) -> list[SynthesisDecision]:
+    """Extract a complete decision ledger from prose without guessing field values."""
+    stripped = text.strip()
+    if len(stripped) > MAX_OUTPUT_CHARS:
+        raise ReviewOutputError("synthesis output is too large")
+
+    matches = list(SYNTHESIS_DECISION_BLOCK_RE.finditer(stripped))
+    opening_tags = len(SYNTHESIS_DECISION_OPEN_RE.findall(stripped))
+    closing_tags = len(SYNTHESIS_DECISION_CLOSE_RE.findall(stripped))
+    if opening_tags != len(matches) or closing_tags != len(matches):
+        raise ReviewOutputError(
+            "synthesis output contains an incomplete or nested <SYNTHESIS_DECISION> block"
+        )
+    if not matches:
+        if expected_finding_ids:
+            raise ReviewOutputError("synthesis output contains no complete decision blocks")
+        if not any(line.strip() == REVIEW_DONE for line in stripped.splitlines()):
+            raise ReviewOutputError(
+                "synthesis output contains neither decisions nor the completion signal"
+            )
+
+    decisions = [_parse_synthesis_decision(match.group(1)) for match in matches]
+    _validate_synthesis_decision_ids(decisions, expected_finding_ids)
     return decisions
 
 

@@ -10,6 +10,8 @@ from gigalphex.review import (
     normalize_review_output,
     parse_review_output,
     parse_synthesis_output,
+    recover_review_output,
+    recover_synthesis_output,
 )
 from gigalphex.signals import REVIEW_DONE
 
@@ -52,6 +54,22 @@ class ReviewOutputTest(unittest.TestCase):
     def test_rejects_text_outside_finding_blocks(self) -> None:
         with self.assertRaisesRegex(ReviewOutputError, "text outside"):
             parse_review_output(f"Here is the issue:\n{VALID_FINDING}")
+
+    def test_recovers_no_findings_from_explanations_and_runtime_noise(self) -> None:
+        output = "Review complete.\nNO FINDINGS\n[WARN] runtime diagnostic\n"
+
+        self.assertEqual("NO FINDINGS", recover_review_output(output))
+
+    def test_recovers_valid_finding_blocks_from_explanatory_text(self) -> None:
+        recovered = recover_review_output(f"Confirmed issue:\n{VALID_FINDING}\nSummary.")
+
+        self.assertEqual(VALID_FINDING, recovered)
+
+    def test_recovery_rejects_ambiguous_or_incomplete_review_output(self) -> None:
+        with self.assertRaisesRegex(ReviewOutputError, "ambiguously"):
+            recover_review_output(f"NO FINDINGS\n{VALID_FINDING}")
+        with self.assertRaisesRegex(ReviewOutputError, "incomplete"):
+            recover_review_output("Review complete.\n<FINDING>")
 
     def test_rejects_missing_evidence(self) -> None:
         with self.assertRaisesRegex(ReviewOutputError, "missing finding fields: evidence"):
@@ -144,6 +162,26 @@ class ReviewOutputTest(unittest.TestCase):
             )
         with self.assertRaisesRegex(ReviewOutputError, "invalid synthesis decision"):
             parse_synthesis_output(synthesis_decision("F001", "ignored"), ["F001"])
+
+    def test_recovers_complete_synthesis_ledger_from_explanatory_text(self) -> None:
+        output = "Validated the finding.\n" + synthesis_decision("F001") + "\nDone."
+
+        decisions = recover_synthesis_output(output, ["F001"])
+
+        self.assertEqual(["F001"], [item.finding_id for item in decisions])
+
+    def test_synthesis_recovery_rejects_incomplete_blocks(self) -> None:
+        with self.assertRaisesRegex(ReviewOutputError, "incomplete"):
+            recover_synthesis_output("<SYNTHESIS_DECISION>", ["F001"])
+
+    def test_empty_synthesis_recovery_requires_completion_signal(self) -> None:
+        with self.assertRaisesRegex(ReviewOutputError, "completion signal"):
+            recover_synthesis_output("Review complete.", [])
+
+        self.assertEqual(
+            [],
+            recover_synthesis_output(f"Review complete.\n{REVIEW_DONE}", []),
+        )
 
 
 if __name__ == "__main__":
