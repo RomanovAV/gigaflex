@@ -11,7 +11,8 @@ This is a small standalone rewrite of the useful ralphex core:
 - keep detailed agent output in progress logs and generate a live local dashboard
 - detect gigalphex completion signals
 - run review and a default finalize pass
-- run five specialist review agents in parallel, then synthesize/fix findings
+- run five specialist review agents in parallel in disposable detached
+  worktrees, then synthesize/fix findings in the main worktree
 - create/switch a git branch from the plan filename
 - optionally run a plan in an isolated git worktree
 - guard against dirty working trees, with an explicit run-wide override
@@ -131,6 +132,16 @@ shell approval arguments, and receive an explicit inspect-only prompt. Keeping
 the normal invocation lets reviewers run inspection commands without an
 interactive approval failure. The synthesis session uses `task_model` and is
 the only review stage instructed to fix files or create commits.
+
+Every specialist or single-review pass receives an ephemeral snapshot commit
+containing the current tracked and non-ignored untracked working-tree state.
+Each reviewer runs from its own detached temporary worktree, so ordinary file,
+index, and detached-HEAD changes cannot collide with another reviewer or the
+main working tree. The runner removes all review worktrees in a `finally` path,
+prunes their git metadata, and deletes the temporary directory after every
+review pass, including failed and interrupted passes. Review worktrees are an
+isolation boundary for normal reviewer activity, not a security sandbox against
+arbitrary commands that deliberately target the shared git repository.
 
 Observed GigaCode constraints:
 

@@ -6,7 +6,8 @@ from pathlib import Path
 import re
 import shutil
 import subprocess
-from typing import Iterable, Optional
+import tempfile
+from typing import Callable, Iterable, Optional
 
 
 DATE_PREFIX_RE = re.compile(r"^[\d-]+")
@@ -295,6 +296,165 @@ class GitService:
         self.run("add", "--all")
         self.run("commit", "-m", message)
         return True
+
+    def create_review_snapshot(self, index_path: Path) -> str:
+        """Create an unreachable commit for the current working-tree state."""
+        head = self.head_commit()
+        if not head:
+            raise GitError("cannot create a review snapshot without a HEAD commit")
+
+        index_path = index_path.resolve()
+        index_path.parent.mkdir(parents=True, exist_ok=True)
+        snapshot_env = {
+            "GIT_INDEX_FILE": str(index_path),
+            "GIT_AUTHOR_NAME": "GigaLphex",
+            "GIT_AUTHOR_EMAIL": "gigalphex@localhost",
+            "GIT_COMMITTER_NAME": "GigaLphex",
+            "GIT_COMMITTER_EMAIL": "gigalphex@localhost",
+        }
+        try:
+            self.run("read-tree", head, env=snapshot_env)
+            self.run("add", "--all", env=snapshot_env)
+            tree = self.run("write-tree", env=snapshot_env).stdout.strip()
+            snapshot = self.run(
+                "commit-tree",
+                tree,
+                "-p",
+                head,
+                input_text="gigalphex: ephemeral review snapshot\n",
+                env=snapshot_env,
+            ).stdout.strip()
+        finally:
+            index_path.unlink(missing_ok=True)
+        if not snapshot:
+            raise GitError("git commit-tree did not return a review snapshot commit")
+        return snapshot
+
+    def add_detached_worktree(self, path: Path, commit: str) -> None:
+        self.run("worktree", "add", "--detach", str(path), commit)
+
+    def remove_worktree(self, path: Path) -> None:
+        result = self.run(
+            "worktree",
+            "remove",
+            "--force",
+            str(path),
+            check=False,
+        )
+        if result.returncode != 0 and path.exists():
+            shutil.rmtree(path)
+
+    def prune_worktrees(self) -> None:
+        self.run("worktree", "prune", "--expire", "now", check=False)
+
+
+@dataclass(frozen=True)
+class ReviewWorktreeSet:
+    snapshot_commit: str
+    paths: dict[str, Path]
+    repo_root: Path
+
+
+@dataclass
+class ReviewWorktreeManager:
+    git: GitService
+    diagnostic: Callable[[str], None] = lambda _line: None
+    temp_parent: Optional[Path] = None
+
+    @property
+    def repo_root(self) -> Path:
+        return self.git.repo_root()
+
+    def create(self, names: Iterable[str]) -> "_ReviewWorktreeContext":
+        unique_names = tuple(dict.fromkeys(names))
+        if not unique_names:
+            raise ValueError("at least one review workspace name is required")
+        return _ReviewWorktreeContext(self, unique_names)
+
+    def report(self, line: str) -> None:
+        try:
+            self.diagnostic(line)
+        except Exception:
+            # Diagnostics must never prevent disposal of a temporary worktree.
+            pass
+
+
+class _ReviewWorktreeContext:
+    def __init__(self, manager: ReviewWorktreeManager, names: tuple[str, ...]) -> None:
+        self.manager = manager
+        self.names = names
+        self.root: Optional[Path] = None
+        self.worktrees: list[Path] = []
+
+    def __enter__(self) -> ReviewWorktreeSet:
+        parent = str(self.manager.temp_parent) if self.manager.temp_parent else None
+        self.root = Path(tempfile.mkdtemp(prefix="gigalphex-review-", dir=parent))
+        try:
+            snapshot = self.manager.git.create_review_snapshot(
+                self.root / "snapshot.index"
+            )
+            self.manager.report(
+                "session=review-worktree event=snapshot_created "
+                f"commit={snapshot} workspaces={len(self.names)}"
+            )
+            paths: dict[str, Path] = {}
+            for index, name in enumerate(self.names, start=1):
+                slug = worktree_dir_name(name)
+                path = self.root / f"{index:02d}-{slug}"
+                self.manager.git.add_detached_worktree(path, snapshot)
+                self.worktrees.append(path)
+                paths[name] = path
+                self.manager.report(
+                    "session=review-worktree event=created "
+                    f"name={name!r} path={str(path)!r} commit={snapshot}"
+                )
+            return ReviewWorktreeSet(
+                snapshot_commit=snapshot,
+                paths=paths,
+                repo_root=self.manager.repo_root,
+            )
+        except BaseException:
+            self._cleanup()
+            raise
+
+    def __exit__(self, exc_type, exc, traceback) -> None:
+        try:
+            self._cleanup()
+        except Exception as cleanup_error:
+            if exc is None:
+                raise
+            self.manager.report(
+                "session=review-worktree event=cleanup_failed "
+                f"error={str(cleanup_error)!r}"
+            )
+
+    def _cleanup(self) -> None:
+        root = self.root
+        if root is None:
+            return
+        cleanup_errors: list[str] = []
+        for path in reversed(self.worktrees):
+            try:
+                self.manager.git.remove_worktree(path)
+                self.manager.report(
+                    "session=review-worktree event=removed "
+                    f"path={str(path)!r}"
+                )
+            except (OSError, GitError) as exc:
+                cleanup_errors.append(f"{path}: {exc}")
+        self.manager.git.prune_worktrees()
+        try:
+            if root.exists():
+                shutil.rmtree(root)
+        except OSError as exc:
+            cleanup_errors.append(f"{root}: {exc}")
+        self.worktrees.clear()
+        self.root = None
+        if cleanup_errors:
+            raise GitError(
+                "could not remove disposable review worktrees: "
+                + "; ".join(cleanup_errors)
+            )
 
 
 @dataclass(frozen=True)

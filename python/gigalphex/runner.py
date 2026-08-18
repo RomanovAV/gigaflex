@@ -3,11 +3,11 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 import time
-from typing import Optional
+from typing import Callable, Optional
 
 from .dashboard import ProgressDashboard
 from .executor import ExecResult, GigaCodeExecutor
-from .git import GitError, GitService
+from .git import GitError, GitService, ReviewWorktreeManager
 from .plan import Plan, Task, file_has_uncompleted_checkbox, parse_plan, parse_plan_file
 from .progress import ProgressLog
 from .prompts import (
@@ -74,6 +74,7 @@ class Runner:
         review_agent_executor: Optional[GigaCodeExecutor] = None,
         finalize_executor: Optional[GigaCodeExecutor] = None,
         dashboard: Optional[ProgressDashboard] = None,
+        review_worktrees: Optional[ReviewWorktreeManager] = None,
     ) -> None:
         self.options = options
         self.executor = executor
@@ -82,6 +83,7 @@ class Runner:
         self.finalize_executor = finalize_executor or self.synthesis_executor
         self.log = log
         self.dashboard = dashboard
+        self.review_worktrees = review_worktrees
 
     def run(self) -> None:
         if self.options.dry_run:
@@ -238,11 +240,16 @@ class Runner:
             return
 
         context = self._context()
-        prompt = render_review_prompt(self.options.prompts.review, context)
         for iteration in range(1, self.options.review_iterations + 1):
             self.log.section(f"review iteration {iteration}")
             head_before = self._git().head_commit()
-            result = self.review_agent_executor.run(prompt)
+            result = self._run_single_review_agent(
+                "review",
+                lambda review_context: render_review_prompt(
+                    self.options.prompts.review,
+                    review_context,
+                ),
+            )
             self._prefix_new_commits(head_before, "review")
             if not result.ok:
                 raise RuntimeError(describe_failure("gigacode review session", result))
@@ -277,12 +284,8 @@ class Runner:
         context = self._context()
         for iteration in range(1, self.options.review_iterations + 1):
             self.log.section(f"parallel review iteration {iteration}")
-            prompts = {
-                name: render_review_agent_prompt(self.options.prompts.review_agent, name, focus, context)
-                for name, focus in REVIEW_AGENTS.items()
-            }
             head_before = self._git().head_commit()
-            results = self.review_agent_executor.run_batch(prompts)
+            results = self._run_parallel_review_agents()
             self._prefix_new_commits(head_before, "parallel review")
             findings: dict[str, str] = {}
             for name in REVIEW_AGENTS:
@@ -769,8 +772,13 @@ class Runner:
 
         self.log.section(f"review format retry: {name}")
         head_before = self._git().head_commit()
-        retry = self.review_agent_executor.run(
-            render_review_format_retry_prompt(result.output, validation_error)
+        retry_prompt = render_review_format_retry_prompt(
+            result.output,
+            validation_error,
+        )
+        retry = self._run_single_review_agent(
+            f"format-{name}",
+            lambda _context: retry_prompt,
         )
         self._prefix_new_commits(head_before, f"review format retry: {name}")
         if not retry.ok:
@@ -794,6 +802,87 @@ class Runner:
 
     def _git(self) -> GitService:
         return GitService(Path("."))
+
+    def _run_single_review_agent(
+        self,
+        name: str,
+        render_prompt: Callable[[PromptContext], str],
+    ) -> ExecResult:
+        if self.review_worktrees is None:
+            return self.review_agent_executor.run(render_prompt(self._context()))
+
+        with self.review_worktrees.create([name]) as worktrees:
+            worktree = worktrees.paths[name]
+            context = self._context_for_review_worktree(
+                worktree,
+                worktrees.repo_root,
+            )
+            return self.review_agent_executor.run(
+                render_prompt(context),
+                cwd=worktree,
+            )
+
+    def _run_parallel_review_agents(self) -> dict[str, ExecResult]:
+        if self.review_worktrees is None:
+            context = self._context()
+            prompts = {
+                name: render_review_agent_prompt(
+                    self.options.prompts.review_agent,
+                    name,
+                    focus,
+                    context,
+                )
+                for name, focus in REVIEW_AGENTS.items()
+            }
+            return self.review_agent_executor.run_batch(prompts)
+
+        with self.review_worktrees.create(REVIEW_AGENTS) as worktrees:
+            prompts = {
+                name: render_review_agent_prompt(
+                    self.options.prompts.review_agent,
+                    name,
+                    focus,
+                    self._context_for_review_worktree(
+                        worktrees.paths[name],
+                        worktrees.repo_root,
+                    ),
+                )
+                for name, focus in REVIEW_AGENTS.items()
+            }
+            return self.review_agent_executor.run_batch(
+                prompts,
+                workdirs=worktrees.paths,
+            )
+
+    def _context_for_review_worktree(
+        self,
+        worktree: Path,
+        repo_root: Path,
+    ) -> PromptContext:
+        context = self._context()
+
+        def remap(path: Optional[Path]) -> Optional[Path]:
+            if path is None:
+                return None
+            try:
+                relative = path.resolve().relative_to(repo_root.resolve())
+            except ValueError:
+                return path
+            return worktree / relative
+
+        return PromptContext(
+            plan_file=remap(context.plan_file),
+            progress_file=remap(context.progress_file) or context.progress_file,
+            default_branch=context.default_branch,
+            jira_task=context.jira_task,
+            plan_kind=context.plan_kind,
+            plan_source=remap(context.plan_source),
+            plan_context_files=tuple(
+                remapped
+                for path in context.plan_context_files
+                if (remapped := remap(path)) is not None
+            ),
+        )
 
     def _uncommitted_paths(self) -> set[Path]:
         git = self._git()

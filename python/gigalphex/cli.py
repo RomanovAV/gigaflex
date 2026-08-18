@@ -19,6 +19,7 @@ from .executor import GigaCodeExecutor
 from .git import (
     GitError,
     GitService,
+    ReviewWorktreeManager,
     branch_name_from_plan,
     jira_branch_name,
     move_plan_to_completed,
@@ -782,6 +783,11 @@ def main(argv: Optional[list[str]] = None) -> int:
         task_completion_retries=cfg.retry_count,
         allow_dirty=cfg.allow_dirty,
     )
+    review_worktrees = (
+        None
+        if args.dry_run
+        else ReviewWorktreeManager(git, diagnostic=log.diagnostic)
+    )
 
     exit_code = 0
     run_status = "success"
@@ -794,6 +800,7 @@ def main(argv: Optional[list[str]] = None) -> int:
             review_agent_executor=review_agent_executor,
             finalize_executor=finalize_executor,
             dashboard=dashboard,
+            review_worktrees=review_worktrees,
         ).run()
         if (
             not args.dry_run

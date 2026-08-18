@@ -155,12 +155,14 @@ class GigaCodeExecutor:
         prompt: str,
         *,
         retry_guard: Optional[RetryGuard] = None,
+        cwd: Optional[Path] = None,
     ) -> ExecResult:
         return self._run_with_retries(
             prompt,
             self.output,
             self.name,
             retry_guard=retry_guard,
+            cwd=cwd,
         )
 
     def run_interactive(self, prompt: str) -> ExecResult:
@@ -216,9 +218,20 @@ class GigaCodeExecutor:
         )
         return ExecResult(output="", returncode=proc.returncode)
 
-    def run_batch(self, prompts: dict[str, str]) -> dict[str, ExecResult]:
+    def run_batch(
+        self,
+        prompts: dict[str, str],
+        *,
+        workdirs: Optional[dict[str, Path]] = None,
+    ) -> dict[str, ExecResult]:
         if not prompts:
             return {}
+        if workdirs is not None:
+            missing = sorted(set(prompts) - set(workdirs))
+            if missing:
+                raise ValueError(
+                    "missing batch workdirs for: " + ", ".join(missing)
+                )
         results: dict[str, ExecResult] = {}
         pool = ThreadPoolExecutor(max_workers=min(self.max_workers, len(prompts)))
         futures = {}
@@ -230,6 +243,7 @@ class GigaCodeExecutor:
                     prompt,
                     lambda _line: None,
                     f"{self.name}:{name}",
+                    cwd=workdirs[name] if workdirs is not None else None,
                 ): name
                 for name, prompt in prompts.items()
             }
@@ -260,6 +274,7 @@ class GigaCodeExecutor:
         output: Callable[[str], None],
         session: str,
         retry_guard: Optional[RetryGuard] = None,
+        cwd: Optional[Path] = None,
     ) -> ExecResult:
         attempts = self.retry_count + 1
         last: Optional[ExecResult] = None
@@ -268,11 +283,23 @@ class GigaCodeExecutor:
             if attempt > 1:
                 output(f"retrying gigacode command, attempt {attempt}/{attempts}\n")
             using_default_model = self._default_model_fallback_active()
-            result = (
-                self._run_without_configured_model(prompt, output, session)
-                if using_default_model
-                else self._run_once(prompt, output, session)
-            )
+            if using_default_model:
+                result = (
+                    self._run_without_configured_model(
+                        prompt,
+                        output,
+                        session,
+                        cwd=cwd,
+                    )
+                    if cwd is not None
+                    else self._run_without_configured_model(prompt, output, session)
+                )
+            else:
+                result = (
+                    self._run_once(prompt, output, session, cwd=cwd)
+                    if cwd is not None
+                    else self._run_once(prompt, output, session)
+                )
             result.attempts = attempt
             self._record_statistics(session, attempt, result)
             if result.ok:
@@ -310,7 +337,16 @@ class GigaCodeExecutor:
                     f"configured GigaCode model {self._configured_model!r} "
                     "was not found; retrying with the default model\n"
                 )
-                result = self._run_without_configured_model(prompt, output, session)
+                result = (
+                    self._run_without_configured_model(
+                        prompt,
+                        output,
+                        session,
+                        cwd=cwd,
+                    )
+                    if cwd is not None
+                    else self._run_without_configured_model(prompt, output, session)
+                )
                 result.attempts = attempt
                 self._record_statistics(session, attempt, result)
                 if result.ok:
@@ -361,20 +397,25 @@ class GigaCodeExecutor:
         prompt: str,
         output: Callable[[str], None],
         session: str,
+        *,
+        cwd: Optional[Path] = None,
     ) -> ExecResult:
-        return self._run(prompt, output, session)
+        return self._run(prompt, output, session, cwd=cwd)
 
     def _run_without_configured_model(
         self,
         prompt: str,
         output: Callable[[str], None],
         session: str,
+        *,
+        cwd: Optional[Path] = None,
     ) -> ExecResult:
         return self._run(
             prompt,
             output,
             session,
             invocation_args=self._args_without_model,
+            cwd=cwd,
         )
 
     def _default_model_fallback_active(self) -> bool:
@@ -397,6 +438,7 @@ class GigaCodeExecutor:
         session: str,
         *,
         invocation_args: Optional[list[str]] = None,
+        cwd: Optional[Path] = None,
     ) -> ExecResult:
         started = time.monotonic()
         argv, stdin_prompt = self._build_invocation(
@@ -411,7 +453,7 @@ class GigaCodeExecutor:
             command=self._safe_command(argv, prompt),
             prompt_chars=len(prompt),
             prompt_transport="stdin" if pipe_stdin else "argv",
-            cwd=Path.cwd(),
+            cwd=cwd.resolve() if cwd is not None else Path.cwd(),
             stdin_tty=sys.stdin.isatty(),
             stdout_tty=sys.stdout.isatty(),
             stdout_capture=True,
@@ -420,13 +462,15 @@ class GigaCodeExecutor:
         )
         try:
             self._event(session, "launching")
-            proc = subprocess.Popen(
-                argv,
-                stdin=subprocess.PIPE if pipe_stdin else subprocess.DEVNULL,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                start_new_session=os.name == "posix",
-            )
+            popen_kwargs: dict[str, object] = {
+                "stdin": subprocess.PIPE if pipe_stdin else subprocess.DEVNULL,
+                "stdout": subprocess.PIPE,
+                "stderr": subprocess.PIPE,
+                "start_new_session": os.name == "posix",
+            }
+            if cwd is not None:
+                popen_kwargs["cwd"] = str(cwd)
+            proc = subprocess.Popen(argv, **popen_kwargs)
         except FileNotFoundError as exc:
             self._event(session, "launch_failed", error="command_not_found")
             raise RuntimeError(f"gigacode command not found: {self.command}") from exc

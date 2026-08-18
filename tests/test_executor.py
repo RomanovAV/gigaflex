@@ -161,6 +161,39 @@ class ExecutorTest(unittest.TestCase):
         self.assertIn("session=review-agent:quality event=attempt_started", joined)
         self.assertIn("session=review-agent:testing event=attempt_started", joined)
 
+    def test_batch_runs_each_prompt_in_its_assigned_workdir(self) -> None:
+        executor = GigaCodeExecutor(name="review-agent", max_workers=2)
+        success = ExecResult(output="NO FINDINGS\n", returncode=0)
+        workdirs = {
+            "quality": Path("/tmp/review-quality"),
+            "testing": Path("/tmp/review-testing"),
+        }
+
+        with patch.object(executor, "_run_once", return_value=success) as run_once:
+            results = executor.run_batch(
+                {
+                    "quality": "quality prompt",
+                    "testing": "testing prompt",
+                },
+                workdirs=workdirs,
+            )
+
+        self.assertEqual({"quality", "testing"}, set(results))
+        actual = {
+            call.args[2].removeprefix("review-agent:"): call.kwargs["cwd"]
+            for call in run_once.call_args_list
+        }
+        self.assertEqual(workdirs, actual)
+
+    def test_batch_rejects_missing_workdir(self) -> None:
+        executor = GigaCodeExecutor(name="review-agent")
+
+        with self.assertRaisesRegex(ValueError, "missing batch workdirs for: testing"):
+            executor.run_batch(
+                {"quality": "quality prompt", "testing": "testing prompt"},
+                workdirs={"quality": Path("/tmp/review-quality")},
+            )
+
     def test_batch_interrupt_terminates_active_sessions(self) -> None:
         executor = GigaCodeExecutor(name="review-agent")
         success = ExecResult(output="NO FINDINGS\n", returncode=0)

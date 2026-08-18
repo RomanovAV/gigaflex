@@ -8,7 +8,9 @@ import unittest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "python"))
 
 from gigalphex.executor import ExecResult, GigaCodeExecutor
+from gigalphex.git import GitService, ReviewWorktreeManager
 from gigalphex.progress import ProgressLog
+from gigalphex.prompts import REVIEW_AGENTS
 from gigalphex.runner import RunOptions, Runner
 from gigalphex.signals import FINALIZE_DONE, REVIEW_DONE
 
@@ -198,6 +200,103 @@ class RunnerTest(unittest.TestCase):
             self.assertEqual(0, len(review_agent_executor.single_prompts))
             self.assertEqual(0, len(synthesis_executor.batch_prompts))
             self.assertEqual(0, len(synthesis_executor.single_prompts))
+
+    def test_parallel_review_uses_disposable_worktrees_and_remaps_plan(self) -> None:
+        class IsolatedReviewExecutor(FakeExecutor):
+            def __init__(self) -> None:
+                super().__init__()
+                self.workdirs = {}
+
+            def run_batch(self, prompts, *, workdirs=None):
+                assert workdirs is not None
+                self.batch_prompts.append(prompts)
+                self.workdirs = dict(workdirs)
+                for path in workdirs.values():
+                    (path / "reviewer-write.txt").write_text(
+                        "isolated\n",
+                        encoding="utf-8",
+                    )
+                return {
+                    name: ExecResult(output="NO FINDINGS\n", returncode=0)
+                    for name in prompts
+                }
+
+        with temporary_repo() as (repo, plan):
+            log = ProgressLog(repo / "progress.txt")
+            executor = IsolatedReviewExecutor()
+            manager = ReviewWorktreeManager(
+                GitService(repo),
+                diagnostic=log.diagnostic,
+                temp_parent=repo.parent,
+            )
+            runner = Runner(
+                RunOptions(
+                    plan_file=plan,
+                    progress_file=repo / "progress.txt",
+                    review_only=True,
+                    parallel_review=True,
+                    finalize_enabled=False,
+                ),
+                executor,  # type: ignore[arg-type]
+                log,
+                review_agent_executor=executor,  # type: ignore[arg-type]
+                review_worktrees=manager,
+            )
+
+            runner.run()
+
+            self.assertEqual(set(REVIEW_AGENTS), set(executor.workdirs))
+            self.assertTrue(all(not path.exists() for path in executor.workdirs.values()))
+            self.assertFalse((repo / "reviewer-write.txt").exists())
+            for name, prompt in executor.batch_prompts[0].items():
+                self.assertIn(str(executor.workdirs[name] / "plan.md"), prompt)
+            progress = (repo / "progress.txt").read_text(encoding="utf-8")
+            self.assertIn("event=snapshot_created", progress)
+            self.assertIn("event=removed", progress)
+
+    def test_single_review_uses_and_removes_disposable_worktree(self) -> None:
+        class IsolatedSingleExecutor(FakeExecutor):
+            def __init__(self) -> None:
+                super().__init__()
+                self.cwd = None
+
+            def run(self, prompt, *, retry_guard=None, cwd=None):
+                assert cwd is not None
+                self.single_prompts.append(prompt)
+                self.cwd = cwd
+                (cwd / "reviewer-write.txt").write_text(
+                    "isolated\n",
+                    encoding="utf-8",
+                )
+                return ExecResult(output="NO FINDINGS\n", returncode=0)
+
+        with temporary_repo() as (repo, plan):
+            log = ProgressLog(repo / "progress.txt")
+            executor = IsolatedSingleExecutor()
+            runner = Runner(
+                RunOptions(
+                    plan_file=plan,
+                    progress_file=repo / "progress.txt",
+                    review_only=True,
+                    parallel_review=False,
+                    finalize_enabled=False,
+                ),
+                executor,  # type: ignore[arg-type]
+                log,
+                review_agent_executor=executor,  # type: ignore[arg-type]
+                review_worktrees=ReviewWorktreeManager(
+                    GitService(repo),
+                    diagnostic=log.diagnostic,
+                    temp_parent=repo.parent,
+                ),
+            )
+
+            runner.run()
+
+            assert executor.cwd is not None
+            self.assertFalse(executor.cwd.exists())
+            self.assertFalse((repo / "reviewer-write.txt").exists())
+            self.assertIn(str(executor.cwd / "plan.md"), executor.single_prompts[0])
 
     def test_synthesis_accepts_all_rejected_findings_with_completion_signal(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

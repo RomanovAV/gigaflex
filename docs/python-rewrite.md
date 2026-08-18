@@ -25,7 +25,9 @@
   status in a statistics JSON file.
 - Detect gigalphex completion signals.
 - Run a review loop after tasks.
-- Run five specialist review agents in parallel, then synthesize/fix findings.
+- Run five specialist review agents in parallel from disposable detached
+  worktrees built from one ephemeral working-tree snapshot, remove those
+  worktrees after every pass, then synthesize/fix findings in the main worktree.
 - Run a finalize prompt by default, with `--no-finalize` to disable it.
 - Configure the agent command as `gigacode` plus arbitrary CLI args.
 - Select GigaCode models per phase with `plan_model`, `task_model`,

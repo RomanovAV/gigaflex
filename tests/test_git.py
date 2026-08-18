@@ -5,10 +5,100 @@ import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "python"))
 
-from gigalphex.git import GitService, jira_branch_name
+from gigalphex.git import GitService, ReviewWorktreeManager, jira_branch_name
 
 
 class GitServiceTest(unittest.TestCase):
+    def test_review_worktrees_snapshot_dirty_state_and_are_removed(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            repo = tmp_path / "repo"
+            repo.mkdir()
+            git = GitService(repo)
+            git.run("init")
+            git.run("config", "user.email", "test@example.com")
+            git.run("config", "user.name", "GigaLphex Test")
+
+            (repo / ".gitignore").write_text("ignored.txt\n", encoding="utf-8")
+            tracked = repo / "tracked.txt"
+            tracked.write_text("original\n", encoding="utf-8")
+            git.run("add", ".")
+            git.run("commit", "-m", "initial")
+            head_before = git.head_commit()
+
+            tracked.write_text("modified\n", encoding="utf-8")
+            (repo / "untracked.txt").write_text("untracked\n", encoding="utf-8")
+            (repo / "ignored.txt").write_text("ignored\n", encoding="utf-8")
+            status_before = git.run("status", "--short").stdout
+            diagnostics: list[str] = []
+            manager = ReviewWorktreeManager(
+                git,
+                diagnostic=diagnostics.append,
+                temp_parent=tmp_path,
+            )
+
+            with manager.create(["quality", "testing"]) as worktrees:
+                created_paths = list(worktrees.paths.values())
+                self.assertEqual(head_before, git.head_commit())
+                self.assertEqual(
+                    "modified\n",
+                    (created_paths[0] / "tracked.txt").read_text(encoding="utf-8"),
+                )
+                self.assertEqual(
+                    "untracked\n",
+                    (created_paths[0] / "untracked.txt").read_text(encoding="utf-8"),
+                )
+                self.assertFalse((created_paths[0] / "ignored.txt").exists())
+                self.assertEqual("", GitService(created_paths[0]).current_branch())
+                self.assertFalse(GitService(created_paths[0]).is_dirty())
+
+            self.assertTrue(all(not path.exists() for path in created_paths))
+            self.assertEqual(head_before, git.head_commit())
+            self.assertEqual(status_before, git.run("status", "--short").stdout)
+            worktree_list = git.run("worktree", "list", "--porcelain").stdout
+            self.assertNotIn("gigalphex-review-", worktree_list)
+            self.assertIn("event=snapshot_created", "\n".join(diagnostics))
+            self.assertIn("event=removed", "\n".join(diagnostics))
+
+    def test_review_worktrees_are_removed_when_review_raises(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            repo = tmp_path / "repo"
+            repo.mkdir()
+            git = GitService(repo)
+            git.run("init")
+            (repo / "tracked.txt").write_text("tracked\n", encoding="utf-8")
+            git.run("add", ".")
+            snapshot_env = {
+                "GIT_AUTHOR_NAME": "Test",
+                "GIT_AUTHOR_EMAIL": "test@example.com",
+                "GIT_COMMITTER_NAME": "Test",
+                "GIT_COMMITTER_EMAIL": "test@example.com",
+            }
+            git.run("commit", "-m", "initial", env=snapshot_env)
+
+            def broken_diagnostic(_line: str) -> None:
+                raise OSError("log unavailable")
+
+            manager = ReviewWorktreeManager(
+                git,
+                diagnostic=broken_diagnostic,
+                temp_parent=tmp_path,
+            )
+            created_path = None
+
+            with self.assertRaisesRegex(RuntimeError, "review failed"):
+                with manager.create(["quality"]) as worktrees:
+                    created_path = worktrees.paths["quality"]
+                    raise RuntimeError("review failed")
+
+            assert created_path is not None
+            self.assertFalse(created_path.exists())
+            self.assertNotIn(
+                "gigalphex-review-",
+                git.run("worktree", "list", "--porcelain").stdout,
+            )
+
     def test_dirty_paths_preserves_spaces_and_both_sides_of_rename(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)
