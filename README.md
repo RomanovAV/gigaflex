@@ -1,9 +1,15 @@
 # gigalphex
 
-Python autonomous plan runner for GigaCode CLI.
+Python autonomous OpenSpec change and plan runner for GigaCode CLI.
+
+OpenSpec is the primary workflow: the change defines the contract, GigaLphex
+executes one `tasks.md` group at a time, and the completed change passes an
+isolated review and finalize gate before the owner archives it.
 
 This is a small standalone rewrite of the useful ralphex core:
 
+- execute local OpenSpec changes while keeping proposal, design, and delta
+  specs read-only
 - parse English and Russian markdown plans with level-two or level-three
   `Task N:` / `Iteration N:` / `Задача N:` / `Итерация N:` headings
 - execute Superpowers `docs/superpowers/plans/*.md` implementation plans directly
@@ -13,6 +19,8 @@ This is a small standalone rewrite of the useful ralphex core:
 - run review and a default finalize pass
 - run five specialist review agents in parallel in disposable detached
   worktrees, then synthesize/fix findings in the main worktree
+- compare the accumulated change against the immutable commit captured at the
+  start of the run instead of auditing the whole repository from scratch
 - create/switch a git branch from the plan filename
 - optionally run a plan in an isolated git worktree
 - guard against dirty working trees, with an explicit run-wide override
@@ -64,6 +72,41 @@ parallel review sessions, retries, failures, elapsed time, and known token
 usage. The JSON file exposes the same state for future integrations. The full
 agent transcript and executor diagnostics remain in `progress-my-feature.txt`.
 
+Run a standard local OpenSpec `spec-driven` change by passing its change
+directory:
+
+```bash
+PYTHONPATH=python python3 -m gigalphex.cli \
+  --openspec openspec/changes/add-dark-mode
+```
+
+GigaLphex uses the change's `tasks.md` as the writable checklist and provides
+`proposal.md`, `design.md`, and all `specs/**/*.md` delta specs to each task
+agent as read-only context. Each `## N. ...` group in `tasks.md` is one agent
+iteration and one commit. Branch and progress names come from the change
+directory rather than the generic `tasks.md` filename.
+
+After every task group is complete, the five specialist reviewers inspect the
+accumulated change from the immutable base commit captured at launch through
+the current result. They start from the full `base...HEAD` diff, read changed
+files in context, and may inspect directly related code or tests, but they do
+not perform an unrelated repository-wide audit. Confirmed findings go through
+the scoped synthesis stage, followed by the default finalize pass.
+
+GigaLphex invokes the configured GigaCode CLI in the target workspace for every
+phase. Existing team skills, project rules, allowed tools, and GigaCode settings
+therefore remain available instead of being replaced by the runner.
+
+Localized prose-only task sections such as `## Задача 1: ...` are also
+supported when an OpenSpec generator omits checkboxes. They start as pending;
+after completing a section, the task agent adds a durable
+`- [x] N. <title>` marker below its heading so later runs can resume safely.
+
+Completing an OpenSpec run does not move `tasks.md` or archive the change.
+GigaLphex prints the corresponding `openspec archive <change-name>` command so
+the spec merge and archive remain an explicit OpenSpec lifecycle action.
+Archived changes and changes without `tasks.md` are rejected.
+
 Interactive plan creation is different. When stdin and stdout are attached to
 a terminal, `--plan` launches GigaCode with
 `--prompt-interactive '<generated prompt>' --approval-mode=auto-edit` and
@@ -80,36 +123,12 @@ PYTHONPATH=python python3 -m gigalphex.cli --install-planning-skill
 ```
 
 Superpowers implementation plans with `## Task N:` or `### Task N:` headings
-and step checkboxes can be executed directly:
+and step checkboxes can also be executed directly:
 
 ```bash
 PYTHONPATH=python python3 -m gigalphex.cli \
   docs/superpowers/plans/2026-07-01-demo.md
 ```
-
-Standard local OpenSpec `spec-driven` changes can be executed with an explicit
-change-directory flag:
-
-```bash
-PYTHONPATH=python python3 -m gigalphex.cli \
-  --openspec openspec/changes/add-dark-mode
-```
-
-GigaLphex uses the change's `tasks.md` as the writable checklist and provides
-`proposal.md`, `design.md`, and all `specs/**/*.md` delta specs to each task
-agent as read-only context. Each `## N. ...` group in `tasks.md` is one agent
-iteration and one commit. Branch and progress names come from the change
-directory rather than the generic `tasks.md` filename.
-
-Localized prose-only task sections such as `## Задача 1: ...` are also
-supported when an OpenSpec generator omits checkboxes. They start as pending;
-after completing a section, the task agent adds a durable
-`- [x] N. <title>` marker below its heading so later runs can resume safely.
-
-Completing an OpenSpec run does not move `tasks.md` or archive the change.
-GigaLphex prints the corresponding `openspec archive <change-name>` command so
-the spec merge and archive remain an explicit OpenSpec lifecycle action.
-Archived changes and changes without `tasks.md` are rejected.
 
 Install the bundled Superpowers conversion skill when you want to turn a
 Superpowers design spec into a plan, or normalize a plan by removing
@@ -400,8 +419,10 @@ gigacode_command = gigacode
 gigacode_args = --approval-mode=auto-edit --allowed-tools run_shell_command -p {prompt}
 gigacode_interactive_args = --prompt-interactive {prompt} --approval-mode=auto-edit
 gigacode_skills_dir = ~/.gigacode/skills
+plan_model =
 task_model =
 review_model =
+finalize_model =
 default_branch =
 prompts_dir = .gigalphex/prompts
 session_timeout = 1800
@@ -508,4 +529,3 @@ Model selection:
 - synthesis/fixes always use `task_model`, the same model as task execution.
 - `plan_model` falls back to `task_model`, and `finalize_model` falls back to
   `review_model`/`task_model`.
-# gigalphex

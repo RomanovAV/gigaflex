@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Интерактивная настройка GigaLphex для OpenSpec, Superpowers и обычного плана.">
+  <meta name="description" content="Интерактивный запуск OpenSpec change через GigaLphex с автономным выполнением, review и finalize.">
   <title>Как попробовать GigaLphex</title>
   <style>
     :root {
@@ -20,6 +20,7 @@
 
     * { box-sizing: border-box; }
     html { scroll-behavior: smooth; }
+    [hidden] { display: none !important; }
 
     body {
       margin: 0;
@@ -629,10 +630,10 @@
 
     <section class="hero" id="top">
       <div>
-        <p class="kicker">От задачи до первого запуска</p>
-        <h1>Настройте GigaLphex<br><span>за четыре шага.</span></h1>
+        <p class="kicker">OpenSpec → автономное исполнение</p>
+        <h1>Запустите OpenSpec change<br><span>за четыре шага.</span></h1>
       </div>
-      <p class="hero-copy">Выберите процесс, настройте исполнителей и получите команды, подходящие именно вашему проекту.</p>
+      <p class="hero-copy">Спецификация остаётся контрактом, а GigaLphex ведёт задачи, коммиты, review и finalize.</p>
     </section>
 
     <nav class="stepper" aria-label="Шаги настройки">
@@ -683,16 +684,16 @@
           <section class="step-panel" data-panel="2">
             <div class="heading">
               <p class="eyebrow">Шаг 02</p>
-              <h2>С чего начинаем?</h2>
-              <span>Выбирайте по артефакту, который уже есть в проекте.</span>
+              <h2>Выберите source of truth</h2>
+              <span>OpenSpec — основной путь. Superpowers и обычный план остаются дополнительными вариантами.</span>
             </div>
 
             <div class="routes">
-              <button class="route-card" data-route="openspec">
+              <button class="route-card selected" data-route="openspec">
                 <span class="route-number">01</span>
                 <small>Есть change-директория</small>
                 <strong>OpenSpec</strong>
-                <p>Запустить tasks.md вместе с proposal, design и delta specs.</p>
+                <p>Выполнить tasks.md, сохранив proposal, design и delta specs read-only.</p>
                 <code>openspec/changes/…</code>
               </button>
               <button class="route-card" data-route="superpowers">
@@ -702,7 +703,7 @@
                 <p>Выполнить готовый план напрямую или сначала конвертировать spec.</p>
                 <code>docs/superpowers/…</code>
               </button>
-              <button class="route-card selected" data-route="plan">
+              <button class="route-card" data-route="plan">
                 <span class="route-number">03</span>
                 <small>Есть только формулировка задачи</small>
                 <strong>Обычный план</strong>
@@ -716,14 +717,14 @@
               <button data-super-source="spec">Только design spec</button>
             </div>
 
-            <label id="requestField">
+            <label id="requestField" hidden>
               <span>Сформулируйте задачу</span>
               <textarea id="request">добавить health check endpoint</textarea>
             </label>
 
-            <label id="artifactField" hidden>
-              <span id="artifactLabel">Путь к артефакту</span>
-              <input id="artifactPath" value="docs/plans/20260723-add-health-check-endpoint.md" spellcheck="false">
+            <label id="artifactField">
+              <span id="artifactLabel">Путь к OpenSpec change</span>
+              <input id="artifactPath" value="openspec/changes/add-dark-mode" spellcheck="false">
             </label>
           </section>
 
@@ -750,27 +751,38 @@
                 <span>Если config уже существует, GigaLphex использует его без изменений.</span>
               </div>
             </div>
+
+            <div class="settings">
+              <div class="settings-title"><strong>Модели по этапам</strong><small>Каждую можно выбрать отдельно</small></div>
+              <div class="after">
+                <span><b>plan_model</b> · создание обычного плана</span>
+                <span><b>task_model</b> · задачи OpenSpec и synthesis</span>
+                <span><b>review_model</b> · пять read-only reviewers</span>
+                <span><b>finalize_model</b> · финальная проверка</span>
+              </div>
+            </div>
           </section>
 
           <section class="step-panel" data-panel="4">
             <div class="success">✓</div>
             <div class="heading">
               <p class="eyebrow">Готово к запуску</p>
-              <h2>Ваш сценарий собран</h2>
-              <span>Скопируйте команды справа, выполните их по порядку и откройте status-&lt;run&gt;.html в .gigalphex/progress/.</span>
+              <h2>OpenSpec-сценарий собран</h2>
+              <span>Скопируйте команды справа. Во время запуска следите за tasks, review и finalize в status-&lt;run&gt;.html.</span>
             </div>
 
             <div class="summary">
-              <div><small>Выбранный путь</small><strong id="summaryRoute">Обычный план</strong></div>
+              <div><small>Выбранный путь</small><strong id="summaryRoute">OpenSpec</strong></div>
               <div><small>Настройки</small><strong>Из config</strong></div>
-              <div><small>Команда</small><strong>Без лишних флагов</strong></div>
+              <div><small>Quality gate</small><strong>Review → finalize</strong></div>
             </div>
 
             <div class="after">
               <b>После запуска проверьте:</b>
-              <span>01 · live dashboard, JSON status и progress log в .gigalphex/progress/</span>
-              <span>02 · созданные коммиты через git log --oneline</span>
-              <span>03 · оставшиеся изменения через git status --short</span>
+              <span>01 · dashboard, JSON status, transcript и stats в .gigalphex/progress/</span>
+              <span>02 · общий diff change от сохранённого base commit до HEAD</span>
+              <span>03 · review пяти специалистов и успешный finalize</span>
+              <span>04 · затем выполните явный openspec archive &lt;change-name&gt;</span>
             </div>
           </section>
         </div>
@@ -788,20 +800,20 @@
           <button class="copy" id="copyButton">Копировать</button>
         </div>
         <pre><code id="output"></code></pre>
-        <div class="terminal-foot"><span class="dot"></span>Параметры выполнения читаются из config</div>
+        <div class="terminal-foot"><span class="dot"></span>Модели и параметры выполнения читаются из config</div>
       </aside>
     </main>
 
     <footer>
       <strong>GigaLphex</strong>
-      <span>Планируйте. Выполняйте. Проверяйте.</span>
+      <span>Специфицируйте. Выполняйте. Проверяйте.</span>
       <a href="#top">Наверх ↑</a>
     </footer>
   </div>
 
   <script>
     (() => {
-      const state = { step: 1, route: "plan", superSource: "plan" };
+      const state = { step: 1, route: "openspec", superSource: "plan" };
       const routeNames = { openspec: "OpenSpec", superpowers: "Superpowers", plan: "Обычный план" };
       const routePaths = {
         openspec: "openspec/changes/add-dark-mode",
@@ -827,7 +839,15 @@
         ];
 
         if (state.route === "openspec") {
-          commands.push("# Запустите OpenSpec change", cli + " --openspec " + quote(value("artifactPath", routePaths.openspec)));
+          const changePath = value("artifactPath", routePaths.openspec).replace(/\/+$/, "");
+          const changeName = changePath.split("/").pop();
+          commands.push(
+            "# Запустите OpenSpec change",
+            cli + " --openspec " + quote(changePath),
+            "",
+            "# После успешных review и finalize проверьте результат и архивируйте change",
+            "openspec archive " + quote(changeName)
+          );
         } else if (state.route === "superpowers" && state.superSource === "plan") {
           commands.push("# Выполните готовый Superpowers implementation plan", cli + " " + quote(value("artifactPath", routePaths.superpowers)));
         } else if (state.route === "superpowers") {
