@@ -1,0 +1,786 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>gigalphex — SDD и автономность за 5 минут</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #1e1f22;
+      --panel: #25272d;
+      --panel-strong: #2b2d34;
+      --line: #434752;
+      --line-soft: #383b45;
+      --text: #f2f3f5;
+      --muted: #aeb4c0;
+      --subtle: #7f8794;
+      --blue: #4daafc;
+      --cyan: #42d9c8;
+      --green: #6fdd8b;
+      --orange: #f4a261;
+      --red: #ff6b7a;
+      --purple: #b785ff;
+      --shadow: 0 20px 60px rgba(0, 0, 0, 0.35);
+      --mono: "JetBrains Mono", "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+      --ui: Inter, "Segoe UI", Roboto, Arial, sans-serif;
+      --slide-scale: 1;
+    }
+
+    * { box-sizing: border-box; }
+
+    html,
+    body {
+      width: 100%;
+      min-height: 100%;
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--ui);
+    }
+
+    body { overflow: hidden; }
+
+    .deck {
+      position: relative;
+      width: 100vw;
+      height: 100vh;
+      background:
+        linear-gradient(90deg, rgba(255,255,255,0.035) 1px, transparent 1px),
+        linear-gradient(0deg, rgba(255,255,255,0.025) 1px, transparent 1px),
+        var(--bg);
+      background-size: 28px 28px;
+    }
+
+    .deck::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      background:
+        linear-gradient(90deg, rgba(77, 170, 252, 0.12), transparent 22%),
+        linear-gradient(180deg, rgba(183, 133, 255, 0.10), transparent 28%);
+      opacity: 0.45;
+    }
+
+    .topbar,
+    .bottom-bar {
+      position: absolute;
+      z-index: 20;
+      left: 0;
+      right: 0;
+      background: #24262c;
+      border-color: #15161a;
+    }
+
+    .topbar {
+      top: 0;
+      min-height: 40px;
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      align-items: center;
+      padding: 0 16px;
+      border-bottom: 1px solid #15161a;
+    }
+
+    .window-dots { display: flex; gap: 8px; }
+    .window-dots span { width: 12px; height: 12px; border-radius: 50%; }
+    .window-dots span:nth-child(1) { background: #ff5f57; }
+    .window-dots span:nth-child(2) { background: #febc2e; }
+    .window-dots span:nth-child(3) { background: #28c840; }
+
+    .crumbs {
+      display: flex;
+      justify-content: center;
+      gap: 8px;
+      color: var(--muted);
+      font-size: 14px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .crumbs strong { color: var(--text); }
+
+    .status-chip {
+      min-width: 126px;
+      padding: 5px 10px;
+      border: 1px solid #4c5260;
+      border-radius: 6px;
+      color: var(--green);
+      background: #202329;
+      font: 12px var(--mono);
+      text-align: center;
+    }
+
+    .slide {
+      position: absolute;
+      inset: 40px 0 28px;
+      display: none;
+      padding: 24px 34px 26px;
+      overflow: hidden;
+    }
+
+    .slide.active {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .slide-frame {
+      position: relative;
+      z-index: 1;
+      width: min(1220px, 100%);
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: minmax(0, 1.04fr) minmax(380px, 0.96fr);
+      gap: 28px;
+      align-items: center;
+      transform: scale(var(--slide-scale));
+      transform-origin: center;
+    }
+
+    .slide-frame.wide { grid-template-columns: 1fr; }
+
+    .kicker {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      margin: 0 0 12px;
+      color: var(--cyan);
+      font: 13px/1.4 var(--mono);
+    }
+
+    .kicker::before {
+      content: "";
+      flex: 0 0 auto;
+      width: 9px;
+      height: 9px;
+      margin-right: 20px;
+      border-radius: 2px;
+      background: var(--cyan);
+      box-shadow: 13px 0 0 var(--purple), 26px 0 0 var(--orange);
+    }
+
+    h1,
+    h2 {
+      margin: 0;
+      color: var(--text);
+      line-height: 1.04;
+      font-weight: 780;
+      letter-spacing: 0;
+    }
+
+    h1 { max-width: 760px; font-size: 52px; }
+    h2 { max-width: 820px; font-size: 38px; }
+
+    .lead {
+      max-width: 790px;
+      margin: 14px 0 0;
+      color: var(--muted);
+      font-size: 19px;
+      line-height: 1.4;
+    }
+
+    .accent-blue { color: var(--blue); }
+    .accent-cyan { color: var(--cyan); }
+    .accent-green { color: var(--green); }
+    .accent-orange { color: var(--orange); }
+    .accent-purple { color: var(--purple); }
+
+    .talk-time {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 17px;
+      padding: 6px 9px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      color: var(--muted);
+      background: rgba(37, 39, 45, 0.75);
+      font: 13px var(--mono);
+    }
+
+    .talk-time::before {
+      content: "";
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--green);
+    }
+
+    .bullets {
+      display: grid;
+      gap: 10px;
+      margin: 20px 0 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .bullets li {
+      position: relative;
+      padding-left: 24px;
+      color: var(--muted);
+      font-size: 18px;
+      line-height: 1.34;
+    }
+
+    .bullets li::before {
+      content: "";
+      position: absolute;
+      top: 10px;
+      left: 0;
+      width: 8px;
+      height: 8px;
+      border-radius: 2px;
+      background: var(--blue);
+    }
+
+    .bullets li:nth-child(2)::before { background: var(--green); }
+    .bullets li:nth-child(3)::before { background: var(--orange); }
+    .bullets li:nth-child(4)::before { background: var(--purple); }
+
+    .panel {
+      border: 1px solid var(--line);
+      border-radius: 9px;
+      background: rgba(37, 39, 45, 0.94);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+
+    .panel-title {
+      min-height: 35px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 0 13px;
+      border-bottom: 1px solid #1b1d21;
+      color: var(--muted);
+      background: #2b2d33;
+      font: 13px var(--mono);
+    }
+
+    .code-body {
+      padding: 17px 18px;
+      background: #1f2127;
+      color: #c9d1dc;
+      font: 14px/1.7 var(--mono);
+    }
+
+    .code-body div { white-space: nowrap; }
+    .token-key { color: var(--purple); }
+    .token-fn { color: var(--blue); }
+    .token-str { color: var(--green); }
+    .token-comment { color: #7a8494; }
+    .token-ok { color: var(--cyan); }
+
+    .tag-line { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 17px; }
+    .tag {
+      padding: 6px 9px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: rgba(37, 39, 45, 0.82);
+      color: var(--muted);
+      font: 12px var(--mono);
+    }
+    .tag.blue { color: var(--blue); border-color: rgba(77,170,252,.45); }
+    .tag.green { color: var(--green); border-color: rgba(111,221,139,.45); }
+    .tag.orange { color: var(--orange); border-color: rgba(244,162,97,.45); }
+    .tag.purple { color: var(--purple); border-color: rgba(183,133,255,.45); }
+
+    .spec-stack { padding: 15px; background: #1f2127; }
+    .spec-row {
+      display: grid;
+      grid-template-columns: 28px 1fr auto;
+      gap: 10px;
+      align-items: center;
+      min-height: 48px;
+      border-top: 1px solid #333741;
+      color: var(--muted);
+      font: 14px var(--mono);
+    }
+    .spec-row:first-child { border-top: 0; }
+    .spec-icon {
+      width: 20px;
+      height: 20px;
+      display: grid;
+      place-items: center;
+      border: 1px solid #596170;
+      border-radius: 5px;
+      color: var(--subtle);
+    }
+    .spec-row.active .spec-icon { border-color: var(--blue); color: var(--blue); box-shadow: 0 0 0 3px rgba(77,170,252,.14); }
+    .spec-row.done .spec-icon { border-color: var(--green); background: var(--green); color: #101317; }
+    .spec-tag {
+      padding: 3px 7px;
+      border: 1px solid #3b404b;
+      border-radius: 5px;
+      color: var(--subtle);
+      background: #2b2e36;
+      font-size: 11px;
+    }
+    .spec-row.active .spec-tag { color: var(--blue); border-color: rgba(77,170,252,.45); }
+
+    .loop {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 10px;
+      margin-top: 24px;
+    }
+    .loop-step {
+      position: relative;
+      min-height: 138px;
+      padding: 14px 13px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #252830;
+    }
+    .loop-step::after {
+      content: "→";
+      position: absolute;
+      top: 50%;
+      right: -10px;
+      z-index: 2;
+      transform: translate(50%, -50%);
+      color: var(--subtle);
+      font: 18px var(--mono);
+    }
+    .loop-step:last-child::after { display: none; }
+    .loop-index {
+      width: 28px;
+      height: 28px;
+      display: grid;
+      place-items: center;
+      border-radius: 7px;
+      color: #101317;
+      background: var(--blue);
+      font: 800 13px var(--mono);
+    }
+    .loop-step:nth-child(2) .loop-index { background: var(--cyan); }
+    .loop-step:nth-child(3) .loop-index { background: var(--green); }
+    .loop-step:nth-child(4) .loop-index { background: var(--orange); }
+    .loop-step:nth-child(5) .loop-index { background: var(--purple); }
+    .loop-step h3 { margin: 12px 0 7px; font-size: 17px; }
+    .loop-step p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.35; }
+    .loop-note {
+      margin-top: 12px;
+      padding: 11px 14px;
+      border: 1px solid rgba(66,217,200,.42);
+      border-radius: 8px;
+      color: var(--cyan);
+      background: rgba(66,217,200,.06);
+      text-align: center;
+      font: 13px var(--mono);
+    }
+
+    .dashboard {
+      padding: 18px;
+      border: 1px solid #28313b;
+      border-radius: 9px;
+      background: radial-gradient(circle at 20% 0%, #17212a 0, #0b0d10 29rem);
+      box-shadow: var(--shadow);
+      color: #eef3f7;
+      font-size: 11px;
+    }
+    .dash-head { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 13px; }
+    .dash-eyebrow { color: #7ce2b1; font-size: 9px; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; }
+    .dash-head h3 { margin: 4px 0 2px; font-size: 22px; line-height: 1.08; }
+    .dash-head p { margin: 0; color: #8d99a6; }
+    .dash-status { height: fit-content; padding: 6px 9px; border: 1px solid #28313b; border-radius: 999px; background: #101419; white-space: nowrap; font-weight: 700; }
+    .dash-status::before { content: ""; display: inline-block; width: 7px; height: 7px; margin-right: 6px; border-radius: 50%; background: #79b8ff; box-shadow: 0 0 0 4px rgba(121,184,255,.1); }
+    .dash-phases { display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px; margin-bottom: 9px; }
+    .dash-phase,
+    .dash-column { border: 1px solid #28313b; border-radius: 9px; background: linear-gradient(180deg,#14191f,#101419); }
+    .dash-phase { padding: 8px 9px; }
+    .dash-phase b,
+    .dash-phase small { display: block; }
+    .dash-phase small { color: #8d99a6; }
+    .dash-grid { display: grid; grid-template-columns: 1.45fr .85fr; gap: 9px; }
+    .dash-column { padding: 11px; }
+    .dash-column h4 { margin: 0 0 8px; font-size: 12px; }
+    .dash-task { padding: 7px 0; border-top: 1px solid #28313b; }
+    .dash-task:first-of-type { padding-top: 0; border-top: 0; }
+    .dash-task b,
+    .dash-task span { display: block; }
+    .dash-task span { color: #8d99a6; }
+    .dash-task.current b { color: #79b8ff; }
+    .dash-metrics { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; margin-top: 9px; }
+    .dash-metric { padding: 8px; border: 1px solid #28313b; border-radius: 7px; background: #0d1116; }
+    .dash-metric b,
+    .dash-metric span { display: block; }
+    .dash-metric b { font-size: 14px; }
+    .dash-metric span { color: #8d99a6; font-size: 9px; }
+
+    .review-visual { display: grid; gap: 9px; }
+    .baseline {
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      gap: 12px;
+      align-items: center;
+      padding: 10px 12px;
+      border: 1px solid rgba(77,170,252,.45);
+      border-radius: 8px;
+      background: rgba(77,170,252,.07);
+    }
+    .baseline-icon { width: 34px; height: 34px; display: grid; place-items: center; border-radius: 8px; background: var(--blue); color: #101317; font: 800 15px var(--mono); }
+    .baseline strong,
+    .baseline small { display: block; }
+    .baseline small { color: var(--muted); }
+    .baseline code { color: var(--cyan); font: 12px var(--mono); }
+    .review-worktrees { display: grid; grid-template-columns: repeat(6, 1fr); gap: 7px; }
+    .review-node { grid-column: span 2; min-height: 68px; padding: 9px 10px; border: 1px solid var(--line); border-radius: 8px; background: #252830; }
+    .review-node:nth-child(4) { grid-column: 2 / span 2; }
+    .review-node:nth-child(5) { grid-column: 4 / span 2; }
+    .review-node strong { display: block; margin-bottom: 3px; font-size: 13px; }
+    .review-node p { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.28; }
+    .review-node:nth-child(1) { border-color: rgba(111,221,139,.5); }
+    .review-node:nth-child(2) { border-color: rgba(244,162,97,.5); }
+    .review-node:nth-child(3) { border-color: rgba(183,133,255,.5); }
+    .review-node:nth-child(4) { border-color: rgba(77,170,252,.5); }
+    .review-node:nth-child(5) { border-color: rgba(93,211,158,.5); }
+    .ledger {
+      padding: 10px 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #15171b;
+      color: #cdd5e0;
+      font: 11px/1.45 var(--mono);
+    }
+    .ledger-line { display: grid; grid-template-columns: 52px 88px 1fr; gap: 8px; }
+    .ledger-id { color: var(--blue); }
+    .ledger-fixed { color: var(--green); }
+    .ledger-rejected { color: var(--orange); }
+
+    .command {
+      padding: 18px;
+      background: #15171b;
+      color: #cdd5e0;
+      font: 14px/1.7 var(--mono);
+    }
+    .command .prompt { color: var(--subtle); }
+    .command .flag { color: var(--cyan); }
+    .command .path { color: var(--green); }
+    .command .result { margin-top: 10px; color: var(--muted); }
+    .qr-row { display: grid; grid-template-columns: 132px 1fr; gap: 16px; align-items: center; padding: 15px; }
+    .qr-row img { width: 132px; height: 132px; border-radius: 6px; background: white; }
+    .qr-row h3 { margin: 0 0 8px; font-size: 18px; }
+    .qr-row p { margin: 0 0 9px; color: var(--muted); line-height: 1.38; }
+    .qr-row a { color: var(--blue); font: 12px var(--mono); text-decoration: none; overflow-wrap: anywhere; }
+
+    .bottom-bar {
+      bottom: 0;
+      height: 28px;
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      align-items: center;
+      gap: 12px;
+      padding: 0 14px;
+      border-top: 1px solid #15161a;
+    }
+    .nav { display: flex; gap: 8px; }
+    .icon-button {
+      width: 24px;
+      height: 22px;
+      display: grid;
+      place-items: center;
+      padding: 0;
+      border: 1px solid #464b57;
+      border-radius: 5px;
+      color: var(--muted);
+      background: #2d3038;
+      cursor: pointer;
+      font-size: 18px;
+    }
+    .icon-button:hover,
+    .icon-button:focus-visible { color: var(--text); border-color: var(--blue); outline: none; }
+    .progress { height: 4px; border: 1px solid #30343c; border-radius: 999px; background: #17191d; overflow: hidden; }
+    .progress-fill { width: calc(var(--progress, 0) * 100%); height: 100%; background: linear-gradient(90deg,var(--blue),var(--green),var(--orange)); }
+    .counter { min-width: 74px; color: var(--muted); text-align: right; font: 12px var(--mono); }
+
+    @media (max-width: 760px) {
+      .slide { padding: 18px 14px 22px; }
+      .slide-frame,
+      .slide-frame.wide { grid-template-columns: 1fr; align-items: start; }
+      h1 { font-size: 34px; }
+      h2 { font-size: 28px; }
+      .lead { font-size: 16px; }
+      .bullets li { font-size: 16px; }
+      .loop,
+      .dash-phases,
+      .dash-grid,
+      .review-worktrees { grid-template-columns: 1fr; }
+      .loop-step::after { display: none; }
+      .topbar { grid-template-columns: auto 1fr; }
+      .status-chip { display: none; }
+    }
+
+    @media print {
+      body { overflow: visible; }
+      .deck { width: auto; height: auto; }
+      .topbar,
+      .bottom-bar { display: none; }
+      .slide { position: relative; inset: auto; display: block !important; min-height: 100vh; page-break-after: always; padding: 42px; overflow: visible; }
+      .slide-frame { transform: none !important; }
+    }
+  </style>
+</head>
+<body>
+  <main class="deck" aria-label="Презентация gigalphex про SDD и автономность">
+    <div class="topbar" aria-hidden="true">
+      <div class="window-dots"><span></span><span></span><span></span></div>
+      <div class="crumbs"><span>gigalphex</span><span>/</span><strong>5-minute-sdd-overview.html</strong></div>
+      <div class="status-chip">OpenSpec ready</div>
+    </div>
+
+    <section class="slide active" data-title="SDD + автономность">
+      <div class="slide-frame">
+        <div>
+          <p class="kicker">5 минут · главная идея проекта</p>
+          <h1>SDD через <span class="accent-blue">OpenSpec</span> — с автономным исполнением</h1>
+          <p class="lead">Спецификация остаётся контрактом. GigaLphex превращает её задачи в контролируемый цикл: один scope, проверки, коммит, наблюдаемость и независимое ревью.</p>
+          <div class="tag-line">
+            <span class="tag blue">spec-driven</span>
+            <span class="tag green">autonomous loop</span>
+            <span class="tag orange">review isolation</span>
+            <span class="tag purple">team skills + rules</span>
+          </div>
+          <div class="talk-time">0:00 — 0:35</div>
+        </div>
+        <div class="panel" aria-label="Краткая схема SDD исполнения">
+          <div class="panel-title"><span>autonomous-sdd.py</span><span class="accent-green">controlled</span></div>
+          <div class="code-body">
+            <div><span class="token-key">change</span> = <span class="token-str">"openspec/changes/feature"</span></div>
+            <div><span class="token-fn">read</span>(proposal, design, delta_specs)</div>
+            <div><span class="token-fn">select</span>(next_task_group)</div>
+            <div><span class="token-fn">run</span>(gigacode, one_scope)</div>
+            <div><span class="token-fn">verify</span>(tests, checklist, git)</div>
+            <div><span class="token-key">while</span> incomplete: <span class="token-fn">corrective_retry</span>()</div>
+            <div><span class="token-fn">review_isolated</span>(agents=5)</div>
+            <div><span class="token-ok">ready: openspec archive feature</span></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide" data-title="OpenSpec как контракт">
+      <div class="slide-frame">
+        <div>
+          <p class="kicker">Spec-driven development</p>
+          <h2>OpenSpec задаёт «что», GigaLphex автономно ведёт «как»</h2>
+          <p class="lead">Runner принимает change-директорию целиком. Задачи исполняются по очереди, а контекст спецификации защищён от случайного переписывания агентом.</p>
+          <ul class="bullets">
+            <li>`proposal.md`, `design.md` и delta specs — read-only контекст.</li>
+            <li>`tasks.md` — единственный изменяемый checklist выполнения.</li>
+            <li>Каждая группа `## N. ...` — отдельная итерация и коммит.</li>
+            <li>Архивация остаётся явным решением владельца change.</li>
+          </ul>
+          <div class="talk-time">0:35 — 1:20</div>
+        </div>
+        <div class="panel">
+          <div class="panel-title"><span>openspec/changes/add-search</span><span class="accent-cyan">source of truth</span></div>
+          <div class="spec-stack">
+            <div class="spec-row"><span class="spec-icon">·</span><span>proposal.md + design.md</span><span class="spec-tag">read-only</span></div>
+            <div class="spec-row"><span class="spec-icon">·</span><span>specs/search/spec.md</span><span class="spec-tag">read-only</span></div>
+            <div class="spec-row done"><span class="spec-icon">✓</span><span>tasks.md · 1. Подготовить API</span><span class="spec-tag">done</span></div>
+            <div class="spec-row active"><span class="spec-icon">●</span><span>tasks.md · 2. Реализовать поиск</span><span class="spec-tag">selected</span></div>
+            <div class="spec-row"><span class="spec-icon"></span><span>tasks.md · 3. Обновить документацию</span><span class="spec-tag">locked</span></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide" data-title="Автономный цикл">
+      <div class="slide-frame wide">
+        <div>
+          <p class="kicker">Автономность с проверяемыми границами</p>
+          <h2>Runner сам двигает change вперёд — по одной завершённой задаче</h2>
+          <p class="lead">Автономность здесь означает не «длинный prompt без контроля», а повторяемый цикл с формальными условиями завершения и безопасным возобновлением.</p>
+        </div>
+        <div class="loop" aria-label="Автономный цикл выполнения">
+          <article class="loop-step"><span class="loop-index">1</span><h3>Выбрать scope</h3><p>Первую незавершённую группу из `tasks.md`; поздние задачи заблокированы.</p></article>
+          <article class="loop-step"><span class="loop-index">2</span><h3>Выполнить</h3><p>GigaCode меняет deliverable и запускает релевантные проверки.</p></article>
+          <article class="loop-step"><span class="loop-index">3</span><h3>Зафиксировать</h3><p>Checklist/marker, чистое дерево и атомарный Git-коммит.</p></article>
+          <article class="loop-step"><span class="loop-index">4</span><h3>Восстановиться</h3><p>Corrective retry, timeouts, rate limits и fallback на default-модель.</p></article>
+          <article class="loop-step"><span class="loop-index">5</span><h3>Продолжить</h3><p>Следующая группа или review → finalize → явная OpenSpec archive.</p></article>
+        </div>
+        <div class="loop-note">Модель настраивается отдельно для каждого этапа: plan_model · task_model · review_model · finalize_model</div>
+        <div class="talk-time">1:20 — 2:20</div>
+      </div>
+    </section>
+
+    <section class="slide" data-title="Наблюдаемая автономность">
+      <div class="slide-frame">
+        <div>
+          <p class="kicker">Live UI и воспроизводимый след</p>
+          <h2>Автономный прогон остаётся видимым в реальном времени</h2>
+          <p class="lead">Self-contained dashboard обновляется без сервера. Полный transcript и JSON-статистика остаются рядом — для разбора, интеграций и повторного запуска.</p>
+          <ul class="bullets">
+            <li>Фазы tasks, review и finalize видны отдельно.</li>
+            <li>Текущая задача, sessions, retries и ошибки не прячутся в логе.</li>
+            <li>Elapsed time, модели и известные токены фиксируются по попыткам.</li>
+          </ul>
+          <div class="talk-time">2:20 — 3:05</div>
+        </div>
+        <div class="dashboard" aria-label="Пример live dashboard GigaLphex">
+          <div class="dash-head">
+            <div><div class="dash-eyebrow">GigaLphex progress</div><h3>Add search filters</h3><p>Working on task 2: Implement filters</p></div>
+            <div class="dash-status">Running · 4m 18s</div>
+          </div>
+          <div class="dash-phases">
+            <div class="dash-phase"><b class="accent-blue">Tasks</b><small>running</small></div>
+            <div class="dash-phase"><b>Review</b><small>pending</small></div>
+            <div class="dash-phase"><b>Finalize</b><small>pending</small></div>
+          </div>
+          <div class="dash-grid">
+            <div class="dash-column">
+              <h4>OpenSpec task progress</h4>
+              <div class="dash-task"><b>✓ 1. Prepare API</b><span>3 of 3 checklist items</span></div>
+              <div class="dash-task current"><b>● 2. Implement filters</b><span>2 of 4 checklist items</span></div>
+              <div class="dash-task"><b>3. Update docs</b><span>0 of 2 checklist items</span></div>
+            </div>
+            <div class="dash-column">
+              <h4>Active session</h4>
+              <div class="dash-task"><b>task</b><span>running · activity 3s ago</span></div>
+              <div class="dash-metrics">
+                <div class="dash-metric"><b>28,420</b><span>tokens</span></div>
+                <div class="dash-metric"><b>1 / 3</b><span>tasks</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide" data-title="Доверенное ревью">
+      <div class="slide-frame">
+        <div>
+          <p class="kicker">Автономность завершается quality gate</p>
+          <h2>Ревью изолировано, сравнение стабильно, решения структурированы</h2>
+          <p class="lead">Пять специалистов читают один снимок результата независимо. Synthesis исправляет только подтверждённые findings и отчитывается по каждому идентификатору.</p>
+          <ul class="bullets">
+            <li>Immutable baseline хранит точный commit до execution branch.</li>
+            <li>Каждый reviewer получает disposable detached worktree.</li>
+            <li>Synthesis проверяет каждое замечание и исправляет только подтверждённое.</li>
+            <li>Чистое ревью не создаёт лишний этап; неоднозначный ответ не принимается.</li>
+          </ul>
+          <div class="talk-time">3:05 — 4:10</div>
+        </div>
+        <div class="review-visual">
+          <div class="baseline"><span class="baseline-icon">B</span><div><strong>Immutable review base</strong><small>branch label + exact commit persist across resume</small></div><code>a1b2c3d</code></div>
+          <div class="review-worktrees">
+            <div class="review-node"><strong>quality</strong><p>bugs, regressions,<br>security</p></div>
+            <div class="review-node"><strong>implementation</strong><p>requirements<br>and result</p></div>
+            <div class="review-node"><strong>testing</strong><p>tests and<br>validation gaps</p></div>
+            <div class="review-node"><strong>simplification</strong><p>unnecessary<br>complexity</p></div>
+            <div class="review-node"><strong>documentation</strong><p>docs and<br>user-facing changes</p></div>
+          </div>
+          <div class="ledger" aria-label="Пример synthesis ledger">
+            <div class="ledger-line"><span class="ledger-id">F001</span><span class="ledger-fixed">fixed</span><span>validation added + tests passed</span></div>
+            <div class="ledger-line"><span class="ledger-id">F002</span><span class="ledger-rejected">rejected</span><span>claim does not match repository evidence</span></div>
+            <div class="ledger-line"><span class="ledger-id">F003</span><span class="ledger-fixed">confirmed</span><span>requires another specialist pass</span></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide" data-title="Запуск">
+      <div class="slide-frame">
+        <div>
+          <p class="kicker">Один change · одна команда</p>
+          <h2>OpenSpec становится входом в автономный, но проверяемый delivery</h2>
+          <p class="lead">Команда задаёт контракт. GigaLphex ведёт задачи, Git, retries, review и finalize. Архивация change остаётся осознанным финальным шагом.</p>
+          <ul class="bullets">
+            <li>Для разработчика — меньше ручной координации.</li>
+            <li>Для команды — единый SDD-процесс и воспроизводимый след.</li>
+            <li>Все подготовленные командами skills, rules, tools и настройки GigaCode продолжают работать в каждой сессии.</li>
+          </ul>
+          <div class="talk-time">4:10 — 5:00</div>
+        </div>
+        <div class="panel">
+          <div class="panel-title"><span>terminal</span><span class="accent-green">start here</span></div>
+          <div class="command">
+            <div><span class="prompt">$</span> python3 -m gigalphex.cli \</div>
+            <div>&nbsp;&nbsp;<span class="flag">--openspec</span> <span class="path">openspec/changes/add-search</span></div>
+            <div class="result">→ live dashboard · task commits · isolated review</div>
+            <div class="result">→ ready to archive with: openspec archive add-search</div>
+          </div>
+          <div class="qr-row">
+            <img src="assets/gigalphex-repo-qr.png" alt="QR: репозиторий GigaLphex на GitHub">
+            <div><h3>Код и инструкции</h3><p>README, OpenSpec-сценарий, интерактивная настройка и руководство по реальным задачам.</p><a href="https://github.com/RomanovAV/gigalphex" target="_blank" rel="noreferrer">github.com/RomanovAV/gigalphex</a></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <div class="bottom-bar" aria-hidden="true">
+      <div class="nav">
+        <button class="icon-button" id="prev" title="Предыдущий слайд" aria-label="Предыдущий слайд">‹</button>
+        <button class="icon-button" id="next" title="Следующий слайд" aria-label="Следующий слайд">›</button>
+      </div>
+      <div class="progress"><div class="progress-fill"></div></div>
+      <div class="counter" id="counter">01 / 06</div>
+    </div>
+  </main>
+
+  <script>
+    const slides = Array.from(document.querySelectorAll(".slide"));
+    const counter = document.getElementById("counter");
+    const prev = document.getElementById("prev");
+    const next = document.getElementById("next");
+    let index = 0;
+    let fitFrame = 0;
+
+    function fitActiveSlide() {
+      const active = slides[index];
+      const frame = active.querySelector(".slide-frame");
+      if (!frame) return;
+      frame.style.setProperty("--slide-scale", "1");
+      window.cancelAnimationFrame(fitFrame);
+      fitFrame = window.requestAnimationFrame(() => {
+        const styles = window.getComputedStyle(active);
+        const availableWidth = active.clientWidth - Number.parseFloat(styles.paddingLeft) - Number.parseFloat(styles.paddingRight);
+        const availableHeight = active.clientHeight - Number.parseFloat(styles.paddingTop) - Number.parseFloat(styles.paddingBottom);
+        const naturalWidth = Math.max(frame.scrollWidth, frame.offsetWidth);
+        const naturalHeight = Math.max(frame.scrollHeight, frame.offsetHeight);
+        const scale = Math.min(1, availableWidth / Math.max(1, naturalWidth), availableHeight / Math.max(1, naturalHeight));
+        frame.style.setProperty("--slide-scale", String(scale));
+      });
+    }
+
+    function showSlide(nextIndex, updateHash = true) {
+      index = Math.max(0, Math.min(slides.length - 1, nextIndex));
+      slides.forEach((slide, slideIndex) => slide.classList.toggle("active", slideIndex === index));
+      document.documentElement.style.setProperty("--progress", String((index + 1) / slides.length));
+      counter.textContent = `${String(index + 1).padStart(2, "0")} / ${String(slides.length).padStart(2, "0")}`;
+      prev.disabled = index === 0;
+      next.disabled = index === slides.length - 1;
+      document.title = `gigalphex — ${slides[index].dataset.title || `slide-${index + 1}`}`;
+      if (updateHash) history.replaceState(null, "", `#${index + 1}`);
+      fitActiveSlide();
+    }
+
+    prev.addEventListener("click", () => showSlide(index - 1));
+    next.addEventListener("click", () => showSlide(index + 1));
+
+    document.addEventListener("keydown", (event) => {
+      if (["ArrowRight", "PageDown", " "].includes(event.key)) { event.preventDefault(); showSlide(index + 1); }
+      if (["ArrowLeft", "PageUp"].includes(event.key)) { event.preventDefault(); showSlide(index - 1); }
+      if (event.key === "Home") { event.preventDefault(); showSlide(0); }
+      if (event.key === "End") { event.preventDefault(); showSlide(slides.length - 1); }
+    });
+
+    function loadFromHash() {
+      const parsed = Number.parseInt(window.location.hash.replace("#", ""), 10);
+      if (Number.isFinite(parsed) && parsed >= 1 && parsed <= slides.length) showSlide(parsed - 1, false);
+      else showSlide(0, false);
+    }
+
+    window.addEventListener("hashchange", loadFromHash);
+    window.addEventListener("resize", fitActiveSlide);
+    window.addEventListener("orientationchange", fitActiveSlide);
+    if (document.fonts?.ready) document.fonts.ready.then(fitActiveSlide);
+    loadFromHash();
+  </script>
+</body>
+</html>
