@@ -5,10 +5,57 @@ import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "python"))
 
-from gigalphex.git import GitService, ReviewWorktreeManager, jira_branch_name
+from gigalphex.git import (
+    BranchBaseline,
+    GitService,
+    ReviewWorktreeManager,
+    jira_branch_name,
+)
 
 
 class GitServiceTest(unittest.TestCase):
+    def test_branch_baseline_round_trips_branch_label_and_exact_commit(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            git = GitService(repo)
+            git.run("init")
+            git.run("config", "user.email", "test@example.com")
+            git.run("config", "user.name", "GigaLphex Test")
+            (repo / "tracked.txt").write_text("tracked\n", encoding="utf-8")
+            git.run("add", ".")
+            git.run("commit", "-m", "initial")
+            commit = git.head_commit()
+
+            git.set_branch_baseline(
+                "feature/ABC-123-demo",
+                BranchBaseline(base_branch="release/1.0", base_commit=commit),
+            )
+
+            self.assertEqual(
+                BranchBaseline(base_branch="release/1.0", base_commit=commit),
+                git.branch_baseline("feature/ABC-123-demo"),
+            )
+
+    def test_new_branch_can_start_from_explicit_commit(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            git = GitService(repo)
+            git.run("init")
+            git.run("config", "user.email", "test@example.com")
+            git.run("config", "user.name", "GigaLphex Test")
+            (repo / "one.txt").write_text("one\n", encoding="utf-8")
+            git.run("add", ".")
+            git.run("commit", "-m", "base")
+            base = git.head_commit()
+            (repo / "two.txt").write_text("two\n", encoding="utf-8")
+            git.run("add", ".")
+            git.run("commit", "-m", "later")
+
+            git.switch_or_create_branch("feature/demo", base)
+
+            self.assertEqual(base, git.head_commit())
+            self.assertFalse((repo / "two.txt").exists())
+
     def test_review_worktrees_snapshot_dirty_state_and_are_removed(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)

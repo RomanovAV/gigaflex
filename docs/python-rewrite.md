@@ -47,7 +47,9 @@
   restoring protected plan/OpenSpec state.
 - Retry `Model not found` failures without the configured model and use the
   GigaCode default model for later calls.
-- Validate git repository state, detect default branch, create/switch plan branch, and move completed plans.
+- Validate git repository state, capture the launch branch and exact base commit,
+  persist that base for the execution branch, create/switch the plan branch, and
+  move completed plans.
 - Enforce Jira branch names and automatically prefix new local commit subjects
   created during a run.
 - Run full and tasks-only plan execution in an isolated git worktree with
@@ -124,6 +126,10 @@ gigacode_interactive_args = --prompt-interactive {prompt} --approval-mode=auto-e
 gigacode_skills_dir = ~/.gigacode/skills
 default_branch =
 ```
+
+An empty `default_branch` captures the launch branch and commit. A configured
+value is retained as a legacy explicit base override, equivalent to supplying
+`--base-ref` on each run.
 
 Create local config:
 

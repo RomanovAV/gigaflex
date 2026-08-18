@@ -178,7 +178,8 @@ PYTHONPATH=/path/to/gigalphex/python python3 -m gigalphex.cli --dry-run docs/pla
 PYTHONPATH=/path/to/gigalphex/python python3 -m gigalphex.cli docs/plans/20260617-add-health-check-endpoint.md --tasks-only
 ```
 
-Запустить только review текущей ветки относительно default branch:
+Повторно запустить review текущей ветки относительно базы, сохранённой при
+создании execution-ветки:
 
 ```bash
 PYTHONPATH=/path/to/gigalphex/python python3 -m gigalphex.cli --review
@@ -190,9 +191,11 @@ PYTHONPATH=/path/to/gigalphex/python python3 -m gigalphex.cli --review
 PYTHONPATH=/path/to/gigalphex/python python3 -m gigalphex.cli --review --base-ref develop
 ```
 
-По умолчанию review стартует только из чистого рабочего дерева и сравнивает
-текущую ветку с base-ref. Если нужно ревьюить незакоммиченные staged,
-unstaged или untracked изменения, запускайте review явно с `--allow-dirty`:
+Если сохранённой базы ещё нет (например, ветка создана старой версией
+GigaLphex), один раз укажите `--base-ref`. GigaLphex разрешит его в точный SHA
+и сохранит для следующих запусков. По умолчанию review стартует только из
+чистого рабочего дерева. Если нужно ревьюить незакоммиченные staged, unstaged
+или untracked изменения, запускайте review явно с `--allow-dirty`:
 
 ```bash
 PYTHONPATH=/path/to/gigalphex/python python3 -m gigalphex.cli --review --base-ref develop --allow-dirty

@@ -605,7 +605,6 @@ print("- [ ] Do it")
                 Path("README.md").write_text("# Demo\n", encoding="utf-8")
                 subprocess.run(["git", "add", "README.md"], check=True)
                 subprocess.run(["git", "commit", "-m", "initial"], check=True, stdout=subprocess.PIPE)
-
                 stdout = io.StringIO()
                 with contextlib.redirect_stdout(stdout):
                     code = main(["--plan", "add demo feature", "--gigacode-command", str(fake_gigacode)])
@@ -656,6 +655,12 @@ print("- [ ] Do it")
                 Path("README.md").write_text("# Demo\n", encoding="utf-8")
                 subprocess.run(["git", "add", "README.md"], check=True)
                 subprocess.run(["git", "commit", "-m", "initial"], check=True, stdout=subprocess.PIPE)
+                base_commit = subprocess.run(
+                    ["git", "rev-parse", "HEAD"],
+                    check=True,
+                    text=True,
+                    stdout=subprocess.PIPE,
+                ).stdout.strip()
 
                 stdout = io.StringIO()
                 with patch.dict(os.environ, {"HOME": str(home)}), contextlib.redirect_stdout(stdout):
@@ -682,12 +687,25 @@ print("- [ ] Do it")
                     text=True,
                     stdout=subprocess.PIPE,
                 ).stdout.strip()
+                stored_commit = subprocess.run(
+                    [
+                        "git",
+                        "config",
+                        "--local",
+                        "--get",
+                        "branch.feature/PROJ-123-add-demo-feature.gigalphexBaseCommit",
+                    ],
+                    check=True,
+                    text=True,
+                    stdout=subprocess.PIPE,
+                ).stdout.strip()
             finally:
                 os.chdir(original_cwd)
 
             self.assertEqual(0, code)
             self.assertEqual("feature/PROJ-123-add-demo-feature", branch)
             self.assertTrue(subject.startswith("PROJ-123 docs: add plan "))
+            self.assertEqual(base_commit, stored_commit)
             self.assertIn("created plan:", stdout.getvalue())
 
     def test_interactive_plan_uses_planning_skill_and_existing_terminal(self) -> None:
@@ -886,29 +904,12 @@ print("- [ ] Do it")
             self.assertIn("docs: add plan 202", committed)
             self.assertIn("docs/plans/", committed)
 
-    def test_review_autodetects_default_branch_when_not_configured(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
+    def test_review_requires_explicit_or_stored_base(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp, tempfile.TemporaryDirectory() as home_tmp:
             tmp_path = Path(tmp)
             repo = tmp_path / "repo"
             repo.mkdir()
-            capture = tmp_path / "prompt.txt"
             original_cwd = Path.cwd()
-            fake_gigacode = write_script(
-                tmp_path / "fake_gigacode.py",
-                f"""#!/usr/bin/env python3
-from pathlib import Path
-import sys
-prompt = "\\n".join(sys.argv[1:]) + "\\nSTDIN\\n" + sys.stdin.read()
-with Path({str(capture)!r}).open("a") as fh:
-    fh.write(prompt)
-if "specialist review agents have returned" in prompt:
-    print("<<<GIGALPHEX:REVIEW_DONE>>>")
-elif "Phase: final verification" in prompt:
-    print("<<<GIGALPHEX:FINALIZE_DONE>>>")
-else:
-    print("NO FINDINGS")
-""",
-            )
 
             try:
                 os.chdir(repo)
@@ -920,16 +921,51 @@ else:
                 subprocess.run(["git", "commit", "-m", "initial"], check=True, stdout=subprocess.PIPE)
                 subprocess.run(["git", "branch", "-m", "master"], check=True)
 
-                stdout = io.StringIO()
-                with contextlib.redirect_stdout(stdout):
-                    code = main(["--review", "--no-parallel-review", "--gigacode-command", str(fake_gigacode)])
+                stderr = io.StringIO()
+                with patch.dict(os.environ, {"HOME": home_tmp}), contextlib.redirect_stderr(stderr):
+                    code = main(["--review"])
             finally:
                 os.chdir(original_cwd)
 
-            captured_prompt = capture.read_text(encoding="utf-8")
-            self.assertEqual(0, code)
-            self.assertIn("git diff master...HEAD", captured_prompt)
-            self.assertNotIn("git diff main...HEAD", captured_prompt)
+            self.assertEqual(1, code)
+            self.assertIn("no GigaLphex review base is stored for branch master", stderr.getvalue())
+            self.assertIn("--base-ref REF", stderr.getvalue())
+
+    def test_plan_resume_on_existing_execution_branch_requires_stored_base(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp, tempfile.TemporaryDirectory() as home_tmp:
+            repo = Path(tmp)
+            plan = repo / "docs/plans/20260818-demo.md"
+            plan.parent.mkdir(parents=True)
+            plan.write_text(
+                "# Plan: Demo\n\n### Task 1: Done\n- [x] Already complete\n",
+                encoding="utf-8",
+            )
+            original_cwd = Path.cwd()
+            try:
+                os.chdir(repo)
+                subprocess.run(["git", "init"], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                subprocess.run(["git", "config", "user.email", "test@example.com"], check=True)
+                subprocess.run(["git", "config", "user.name", "GigaLphex Test"], check=True)
+                subprocess.run(["git", "add", "."], check=True)
+                subprocess.run(["git", "commit", "-m", "feature state"], check=True, stdout=subprocess.PIPE)
+                subprocess.run(["git", "branch", "-m", "demo"], check=True)
+
+                stderr = io.StringIO()
+                with (
+                    patch.dict(os.environ, {"HOME": home_tmp}),
+                    contextlib.redirect_stdout(io.StringIO()),
+                    contextlib.redirect_stderr(stderr),
+                ):
+                    code = main([str(plan), "--tasks-only"])
+            finally:
+                os.chdir(original_cwd)
+
+            self.assertEqual(1, code)
+            self.assertIn(
+                "no GigaLphex review base is stored for branch demo",
+                stderr.getvalue(),
+            )
+            self.assertIn("--base-ref REF", stderr.getvalue())
 
     def test_review_uses_explicit_base_ref(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -965,6 +1001,12 @@ else:
                 subprocess.run(["git", "add", "README.md"], check=True)
                 subprocess.run(["git", "commit", "-m", "initial"], check=True, stdout=subprocess.PIPE)
                 subprocess.run(["git", "branch", "release"], check=True)
+                base_commit = subprocess.run(
+                    ["git", "rev-parse", "release"],
+                    check=True,
+                    text=True,
+                    stdout=subprocess.PIPE,
+                ).stdout.strip()
 
                 stdout = io.StringIO()
                 with patch.dict(os.environ, {"HOME": str(home)}), contextlib.redirect_stdout(stdout):
@@ -978,13 +1020,173 @@ else:
                             str(fake_gigacode),
                         ]
                     )
+                stored_commit = subprocess.run(
+                    ["git", "config", "--local", "--get", "branch.master.gigalphexBaseCommit"],
+                    check=True,
+                    text=True,
+                    stdout=subprocess.PIPE,
+                ).stdout.strip()
+                stored_branch = subprocess.run(
+                    ["git", "config", "--local", "--get", "branch.master.gigalphexBaseBranch"],
+                    check=True,
+                    text=True,
+                    stdout=subprocess.PIPE,
+                ).stdout.strip()
             finally:
                 os.chdir(original_cwd)
 
             captured_prompt = capture.read_text(encoding="utf-8")
             self.assertEqual(0, code)
-            self.assertIn("git diff release...HEAD", captured_prompt)
-            self.assertIn("current branch vs release", captured_prompt)
+            self.assertIn(f"git diff {base_commit}...HEAD", captured_prompt)
+            self.assertIn(f"current branch vs {base_commit}", captured_prompt)
+            self.assertEqual(base_commit, stored_commit)
+            self.assertEqual("release", stored_branch)
+
+    def test_plan_run_captures_starting_branch_as_immutable_base(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp, tempfile.TemporaryDirectory() as home_tmp:
+            tmp_path = Path(tmp)
+            repo = tmp_path / "repo"
+            repo.mkdir()
+            capture = tmp_path / "prompt.txt"
+            original_cwd = Path.cwd()
+            fake_gigacode = write_script(
+                tmp_path / "fake_gigacode.py",
+                f"""#!/usr/bin/env python3
+from pathlib import Path
+import sys
+prompt = "\\n".join(sys.argv[1:]) + "\\nSTDIN\\n" + sys.stdin.read()
+with Path({str(capture)!r}).open("a") as fh:
+    fh.write(prompt)
+print("NO FINDINGS")
+""",
+            )
+
+            try:
+                os.chdir(repo)
+                subprocess.run(["git", "init"], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                subprocess.run(["git", "config", "user.email", "test@example.com"], check=True)
+                subprocess.run(["git", "config", "user.name", "GigaLphex Test"], check=True)
+                plan = repo / "docs/plans/20260818-demo.md"
+                plan.parent.mkdir(parents=True)
+                plan.write_text(
+                    "# Plan: Demo\n\n### Task 1: Done\n- [x] Already complete\n",
+                    encoding="utf-8",
+                )
+                subprocess.run(["git", "add", "."], check=True)
+                subprocess.run(["git", "commit", "-m", "release state"], check=True, stdout=subprocess.PIPE)
+                subprocess.run(["git", "branch", "-m", "release/2.0"], check=True)
+                base_commit = subprocess.run(
+                    ["git", "rev-parse", "HEAD"],
+                    check=True,
+                    text=True,
+                    stdout=subprocess.PIPE,
+                ).stdout.strip()
+
+                with patch.dict(os.environ, {"HOME": home_tmp}), contextlib.redirect_stdout(io.StringIO()):
+                    code = main(
+                        [
+                            str(plan),
+                            "--branch",
+                            "feature/demo",
+                            "--no-parallel-review",
+                            "--no-finalize",
+                            "--no-move-plan",
+                            "--gigacode-command",
+                            str(fake_gigacode),
+                        ]
+                    )
+                current_branch = subprocess.run(
+                    ["git", "branch", "--show-current"],
+                    check=True,
+                    text=True,
+                    stdout=subprocess.PIPE,
+                ).stdout.strip()
+                stored_commit = subprocess.run(
+                    ["git", "config", "--local", "--get", "branch.feature/demo.gigalphexBaseCommit"],
+                    check=True,
+                    text=True,
+                    stdout=subprocess.PIPE,
+                ).stdout.strip()
+                stored_branch = subprocess.run(
+                    ["git", "config", "--local", "--get", "branch.feature/demo.gigalphexBaseBranch"],
+                    check=True,
+                    text=True,
+                    stdout=subprocess.PIPE,
+                ).stdout.strip()
+            finally:
+                os.chdir(original_cwd)
+
+            captured_prompt = capture.read_text(encoding="utf-8")
+            self.assertEqual(0, code)
+            self.assertEqual("feature/demo", current_branch)
+            self.assertEqual(base_commit, stored_commit)
+            self.assertEqual("release/2.0", stored_branch)
+            self.assertIn(f"git diff {base_commit}...HEAD", captured_prompt)
+
+    def test_review_restores_stored_base_for_execution_branch(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp, tempfile.TemporaryDirectory() as home_tmp:
+            tmp_path = Path(tmp)
+            repo = tmp_path / "repo"
+            repo.mkdir()
+            capture = tmp_path / "prompt.txt"
+            original_cwd = Path.cwd()
+            fake_gigacode = write_script(
+                tmp_path / "fake_gigacode.py",
+                f"""#!/usr/bin/env python3
+from pathlib import Path
+import sys
+prompt = "\\n".join(sys.argv[1:]) + "\\nSTDIN\\n" + sys.stdin.read()
+with Path({str(capture)!r}).open("a") as fh:
+    fh.write(prompt)
+print("NO FINDINGS")
+""",
+            )
+
+            try:
+                os.chdir(repo)
+                subprocess.run(["git", "init"], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                subprocess.run(["git", "config", "user.email", "test@example.com"], check=True)
+                subprocess.run(["git", "config", "user.name", "GigaLphex Test"], check=True)
+                Path("README.md").write_text("base\n", encoding="utf-8")
+                subprocess.run(["git", "add", "."], check=True)
+                subprocess.run(["git", "commit", "-m", "base"], check=True, stdout=subprocess.PIPE)
+                subprocess.run(["git", "branch", "-m", "release"], check=True)
+                base_commit = subprocess.run(
+                    ["git", "rev-parse", "HEAD"],
+                    check=True,
+                    text=True,
+                    stdout=subprocess.PIPE,
+                ).stdout.strip()
+                subprocess.run(["git", "switch", "-c", "feature/demo"], check=True, stdout=subprocess.PIPE)
+                Path("README.md").write_text("feature\n", encoding="utf-8")
+                subprocess.run(["git", "commit", "-am", "feature"], check=True, stdout=subprocess.PIPE)
+                subprocess.run(
+                    ["git", "config", "--local", "branch.feature/demo.gigalphexBaseBranch", "release"],
+                    check=True,
+                )
+                subprocess.run(
+                    ["git", "config", "--local", "branch.feature/demo.gigalphexBaseCommit", base_commit],
+                    check=True,
+                )
+
+                with patch.dict(os.environ, {"HOME": home_tmp}), contextlib.redirect_stdout(io.StringIO()):
+                    code = main(
+                        [
+                            "--review",
+                            "--no-parallel-review",
+                            "--no-finalize",
+                            "--gigacode-command",
+                            str(fake_gigacode),
+                        ]
+                    )
+            finally:
+                os.chdir(original_cwd)
+
+            self.assertEqual(0, code)
+            self.assertIn(
+                f"git diff {base_commit}...HEAD",
+                capture.read_text(encoding="utf-8"),
+            )
 
     def test_successful_plan_run_commits_completed_plan_move_and_ignores_progress(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -1175,7 +1377,15 @@ print(json.dumps({
                     contextlib.redirect_stdout(stdout),
                     contextlib.redirect_stderr(stderr),
                 ):
-                    code = main(["--review", "--gigacode-command", "unused-gigacode"])
+                    code = main(
+                        [
+                            "--review",
+                            "--base-ref",
+                            "HEAD",
+                            "--gigacode-command",
+                            "unused-gigacode",
+                        ]
+                    )
             finally:
                 os.chdir(original_cwd)
 

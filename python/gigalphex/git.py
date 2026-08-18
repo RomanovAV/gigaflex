@@ -21,6 +21,12 @@ class GitError(RuntimeError):
     pass
 
 
+@dataclass(frozen=True)
+class BranchBaseline:
+    base_branch: str
+    base_commit: str
+
+
 @dataclass
 class GitService:
     cwd: Path = Path(".")
@@ -130,6 +136,88 @@ class GitService:
     def head_commit(self) -> str:
         proc = self.run("rev-parse", "--verify", "HEAD", check=False)
         return proc.stdout.strip() if proc.returncode == 0 else ""
+
+    def resolve_commit(self, ref: str) -> str:
+        if not ref:
+            raise GitError("git ref is required")
+        proc = self.run(
+            "rev-parse",
+            "--verify",
+            "--quiet",
+            f"{ref}^{{commit}}",
+            check=False,
+        )
+        commit = proc.stdout.strip()
+        if proc.returncode != 0 or not commit:
+            raise GitError(f"git ref not found or does not name a commit: {ref}")
+        return commit
+
+    def branch_baseline(self, branch: str) -> Optional[BranchBaseline]:
+        if not branch:
+            return None
+        commit_proc = self.run(
+            "config",
+            "--local",
+            "--get",
+            f"branch.{branch}.gigalphexBaseCommit",
+            check=False,
+        )
+        commit = commit_proc.stdout.strip()
+        if commit_proc.returncode != 0 or not commit:
+            return None
+        branch_proc = self.run(
+            "config",
+            "--local",
+            "--get",
+            f"branch.{branch}.gigalphexBaseBranch",
+            check=False,
+        )
+        base_branch = branch_proc.stdout.strip() or commit
+        try:
+            resolved = self.resolve_commit(commit)
+        except GitError as exc:
+            raise GitError(
+                f"stored GigaLphex base commit for {branch} no longer exists: {commit}"
+            ) from exc
+        return BranchBaseline(base_branch=base_branch, base_commit=resolved)
+
+    def set_branch_baseline(
+        self,
+        branch: str,
+        baseline: BranchBaseline,
+    ) -> None:
+        if not branch:
+            raise GitError("execution branch is required to store its review base")
+        commit = self.resolve_commit(baseline.base_commit)
+        self.run(
+            "config",
+            "--local",
+            f"branch.{branch}.gigalphexBaseBranch",
+            baseline.base_branch or commit,
+        )
+        self.run(
+            "config",
+            "--local",
+            f"branch.{branch}.gigalphexBaseCommit",
+            commit,
+        )
+
+    def is_ancestor(self, ancestor: str, descendant: str = "HEAD") -> bool:
+        proc = self.run(
+            "merge-base",
+            "--is-ancestor",
+            ancestor,
+            descendant,
+            check=False,
+        )
+        if proc.returncode == 0:
+            return True
+        if proc.returncode == 1:
+            return False
+        detail = proc.stderr.strip() or proc.stdout.strip()
+        raise GitError(
+            f"could not compare git history {ancestor}..{descendant}: {detail}"
+        )
 
     def commit_subjects_since(self, commit: str) -> list[str]:
         proc = self.run(
@@ -245,7 +333,7 @@ class GitService:
         if not self.branch_exists(ref):
             raise GitError(f"git ref not found: {ref}")
 
-    def switch_or_create_branch(self, branch: str) -> None:
+    def switch_or_create_branch(self, branch: str, start_point: str = "HEAD") -> None:
         if not branch:
             return
         if self.current_branch() == branch:
@@ -253,12 +341,15 @@ class GitService:
         if self.branch_exists(branch):
             self.run("switch", branch)
             return
-        self.run("switch", "-c", branch)
+        if start_point == "HEAD" and not self.has_commits():
+            self.run("switch", "-c", branch)
+        else:
+            self.run("switch", "-c", branch, start_point)
 
     def worktree_path(self, branch: str) -> Path:
         return self.repo_root() / ".gigalphex" / "worktrees" / worktree_dir_name(branch)
 
-    def ensure_worktree(self, branch: str) -> Path:
+    def ensure_worktree(self, branch: str, start_point: str = "HEAD") -> Path:
         if not branch:
             raise GitError("branch name is required for worktree")
         path = self.worktree_path(branch)
@@ -276,7 +367,7 @@ class GitService:
         if self.branch_exists(branch):
             self.run("worktree", "add", str(path), branch)
         else:
-            self.run("worktree", "add", "-b", branch, str(path), "HEAD")
+            self.run("worktree", "add", "-b", branch, str(path), start_point)
         return path
 
     def commit_file(self, path: Path, message: str) -> None:

@@ -17,6 +17,7 @@ from .config import (
 from .dashboard import ProgressDashboard, dashboard_paths
 from .executor import GigaCodeExecutor
 from .git import (
+    BranchBaseline,
     GitError,
     GitService,
     ReviewWorktreeManager,
@@ -117,8 +118,14 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--rate-limit-pattern", action="append", default=[], help="rate-limit text to detect in failed sessions")
     parser.add_argument("--wait-on-rate-limit", type=float, help="seconds to wait before retrying a rate-limited session")
     parser.add_argument("--review-workers", type=int, help="maximum parallel review agents")
-    parser.add_argument("--default-branch", help="default branch for diffs")
-    parser.add_argument("--base-ref", help="branch or git ref to compare with HEAD in --review mode")
+    parser.add_argument(
+        "--default-branch",
+        help="legacy alias for --base-ref",
+    )
+    parser.add_argument(
+        "--base-ref",
+        help="branch or git ref to capture as the immutable review base",
+    )
     parser.add_argument("--branch", help="branch to create/switch to before running a plan")
     parser.add_argument("--no-branch", action="store_true", help="do not create/switch branches")
     parser.add_argument(
@@ -213,6 +220,68 @@ def validate_jira_branch_name(branch: str, jira_task: str) -> None:
             "with --jira-task, --branch must start with "
             f"{required_prefix} and include a safe description"
         )
+
+
+def select_run_baseline(
+    git: GitService,
+    requested_ref: str,
+    execution_branch: str,
+    *,
+    review_only: bool,
+    allow_unborn: bool = False,
+    require_stored_for_existing: bool = False,
+) -> BranchBaseline:
+    if requested_ref:
+        return BranchBaseline(
+            base_branch=requested_ref,
+            base_commit=git.resolve_commit(requested_ref),
+        )
+
+    execution_branch_exists = bool(
+        execution_branch and git.branch_exists(execution_branch)
+    )
+    if execution_branch_exists:
+        stored = git.branch_baseline(execution_branch)
+        if stored is not None:
+            return stored
+
+    if review_only or (
+        require_stored_for_existing
+        and execution_branch_exists
+        and git.current_branch() == execution_branch
+    ):
+        branch_detail = f" for branch {execution_branch}" if execution_branch else ""
+        raise GitError(
+            "no GigaLphex review base is stored"
+            f"{branch_detail}; pass --base-ref REF once to select it"
+        )
+
+    commit = git.head_commit()
+    if not commit:
+        if allow_unborn:
+            return BranchBaseline(
+                base_branch=git.current_branch() or "unborn HEAD",
+                base_commit="HEAD",
+            )
+        raise GitError("cannot capture a run base before the repository has a commit")
+    return BranchBaseline(
+        base_branch=git.current_branch() or "detached HEAD",
+        base_commit=commit,
+    )
+
+
+def ensure_baseline_is_ancestor(
+    git: GitService,
+    baseline: BranchBaseline,
+    descendant: str,
+) -> None:
+    if git.is_ancestor(baseline.base_commit, descendant):
+        return
+    raise GitError(
+        "GigaLphex review base "
+        f"{baseline.base_branch} ({baseline.base_commit}) is not an ancestor of "
+        f"{descendant}; pass --base-ref REF to replace it"
+    )
 
 
 def add_gigacode_args(base_args: list[str], extra_args: list[str]) -> list[str]:
@@ -314,9 +383,6 @@ def main(argv: Optional[list[str]] = None) -> int:
         return 2
     if args.quick and not args.plan:
         print("error: --quick requires --plan", file=sys.stderr)
-        return 2
-    if args.base_ref and not args.review:
-        print("error: --base-ref requires --review", file=sys.stderr)
         return 2
     if args.base_ref and args.default_branch:
         print("error: --base-ref and --default-branch cannot be used together", file=sys.stderr)
@@ -457,6 +523,8 @@ def main(argv: Optional[list[str]] = None) -> int:
     if args.finalize is not None:
         cfg.finalize_enabled = args.finalize
 
+    requested_base_ref = cfg.default_branch
+
     if install_skill_requested:
         installers = []
         if args.install_planning_skill:
@@ -524,8 +592,22 @@ def main(argv: Optional[list[str]] = None) -> int:
                 git = GitService(Path("."))
                 if git.is_repo():
                     branch = branch_for_plan(plan_path, args.branch, args.jira_task)
-                    git.switch_or_create_branch(branch)
+                    baseline = select_run_baseline(
+                        git,
+                        requested_base_ref,
+                        branch,
+                        review_only=False,
+                        require_stored_for_existing=True,
+                    )
+                    if git.branch_exists(branch):
+                        ensure_baseline_is_ancestor(git, baseline, branch)
+                    git.switch_or_create_branch(branch, baseline.base_commit)
+                    git.set_branch_baseline(branch, baseline)
                     log.write(f"branch: {branch}\n")
+                    log.write(
+                        "review base: "
+                        f"{baseline.base_branch} ({baseline.base_commit})\n"
+                    )
             log.write(f"gigacode command: {executor.command_line()}\n")
             if interactive:
                 log.write(f"interactive plan target: {plan_path}\n")
@@ -585,26 +667,55 @@ def main(argv: Optional[list[str]] = None) -> int:
 
     git = GitService(Path("."))
     worktree_path: Optional[Path] = None
+    run_baseline: Optional[BranchBaseline] = None
     if not args.dry_run:
         try:
             git.ensure_repo()
-            cfg.default_branch = git.default_branch(cfg.default_branch)
+            starting_branch = git.current_branch()
+            execution_branch = starting_branch
+            if plan_identity_path is not None and not args.review and (
+                cfg.worktree or cfg.create_branch
+            ):
+                execution_branch = branch_for_plan(
+                    plan_identity_path,
+                    args.branch,
+                    args.jira_task,
+                )
+            run_baseline = select_run_baseline(
+                git,
+                requested_base_ref,
+                execution_branch,
+                review_only=args.review,
+                allow_unborn=args.tasks_only,
+                require_stored_for_existing=bool(
+                    plan_identity_path is not None
+                    and not args.review
+                    and (cfg.worktree or cfg.create_branch)
+                ),
+            )
             if args.review:
-                git.ensure_ref_exists(cfg.default_branch)
+                ensure_baseline_is_ancestor(git, run_baseline, "HEAD")
                 if args.jira_task:
-                    current_branch = git.current_branch()
                     try:
-                        validate_jira_branch_name(current_branch, args.jira_task)
+                        validate_jira_branch_name(starting_branch, args.jira_task)
                     except ValueError as exc:
                         raise GitError(
                             "current branch must follow Jira naming policy for --jira-task: "
                             f"{exc}"
                         ) from exc
+                if requested_base_ref and starting_branch:
+                    git.set_branch_baseline(starting_branch, run_baseline)
+            elif execution_branch and git.branch_exists(execution_branch):
+                ensure_baseline_is_ancestor(git, run_baseline, execution_branch)
             ignored_dirty_paths = auto_init_written if auto_init_started_clean else []
             git.ensure_clean(cfg.allow_dirty, ignored_dirty_paths)
             if cfg.worktree and plan_source is not None and not args.review:
                 assert plan_identity_path is not None
-                branch = branch_for_plan(plan_identity_path, args.branch, args.jira_task)
+                branch = execution_branch
+                if not git.has_commits():
+                    raise GitError(
+                        "--worktree requires an initial commit; commit the repository state first"
+                    )
                 repo_root = git.repo_root()
                 try:
                     source_relative = plan_identity_path.relative_to(repo_root)
@@ -612,7 +723,11 @@ def main(argv: Optional[list[str]] = None) -> int:
                     raise GitError(
                         f"plan source must be inside the git repository for --worktree: {plan_identity_path}"
                     ) from exc
-                worktree_path = git.ensure_worktree(branch)
+                worktree_path = git.ensure_worktree(
+                    branch,
+                    run_baseline.base_commit,
+                )
+                git.set_branch_baseline(branch, run_baseline)
                 worktree_source = worktree_path / source_relative
                 if not worktree_source.exists():
                     raise GitError(
@@ -631,8 +746,11 @@ def main(argv: Optional[list[str]] = None) -> int:
                 os.chdir(worktree_path)
                 git = GitService(Path("."))
             elif cfg.create_branch and plan_identity_path is not None and not args.review:
-                branch = branch_for_plan(plan_identity_path, args.branch, args.jira_task)
-                git.switch_or_create_branch(branch)
+                branch = execution_branch
+                git.switch_or_create_branch(branch, run_baseline.base_commit)
+                if git.has_commits():
+                    git.set_branch_baseline(branch, run_baseline)
+            cfg.default_branch = run_baseline.base_commit
         except GitError as exc:
             hint = "; pass --init-git to initialize this directory first" if str(exc) == "not inside a git repository" else ""
             print(f"error: {exc}{hint}", file=sys.stderr)
@@ -749,10 +867,11 @@ def main(argv: Optional[list[str]] = None) -> int:
         if cfg.allow_dirty:
             log.write("allow dirty: enabled for startup and phase transitions\n")
         log.write(f"review workers: {cfg.review_workers}\n")
-        if args.review:
-            log.write(f"review base ref: {cfg.default_branch}\n")
-        else:
-            log.write(f"default branch: {cfg.default_branch}\n")
+        assert run_baseline is not None
+        log.write(
+            "review base: "
+            f"{run_baseline.base_branch} ({run_baseline.base_commit})\n"
+        )
         if args.jira_task:
             log.write(f"jira task: {args.jira_task}\n")
         if worktree_path is not None:

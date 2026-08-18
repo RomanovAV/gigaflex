@@ -301,6 +301,16 @@ Review the current `HEAD` against an explicit branch or other Git ref:
 PYTHONPATH=python python3 -m gigalphex.cli --review --base-ref develop
 ```
 
+For a plan run, GigaLphex normally captures the branch and exact `HEAD` commit
+that are checked out before it creates or switches to the execution branch.
+That immutable commit becomes the review base. The branch label and commit are
+stored in local Git config for the execution branch, so a later `--review`
+restores the same base even if the original branch has advanced. `--base-ref`
+overrides this selection for both plan runs and standalone review runs; the
+resolved commit is then stored for future reviews of that execution branch.
+If an execution branch predates this metadata and is already checked out, pass
+`--base-ref` once; GigaLphex refuses to guess and use the feature branch itself.
+
 Run tests:
 
 ```bash
@@ -348,8 +358,10 @@ Review behavior:
   ledger can be recovered deterministically; if scoped ledger reconciliation is
   still malformed, the runner stops with a review-protocol error instead of
   repeating the full specialist review
-- pass `--base-ref REF` to compare `REF...HEAD`; without it, the default branch
-  is auto-detected
+- plan runs compare against the exact commit checked out when the run started,
+  or the base already stored for an existing execution branch
+- standalone `--review` restores that stored commit; when none is stored, pass
+  `--base-ref REF` once instead of silently reviewing against `main` or `master`
 - reviewers only inspect and report findings; they do not edit or commit
 - synthesis uses `task_model`, verifies reported findings, and is the only
   stage that may fix, test, and commit deliverable changes; runner-owned plan,
@@ -408,6 +420,10 @@ commit_plan_on_creation = true
 allow_dirty = false
 ```
 
+Leave `default_branch` empty to capture the branch checked out at launch. The
+setting remains as a legacy persistent equivalent of `--base-ref` when an
+explicit review base is required for every run.
+
 Configuration loading priority, from lowest to highest:
 
 1. embedded defaults
@@ -428,7 +444,10 @@ the current embedded default automatically.
 
 Git behavior:
 
-- plan runs create/switch to a branch derived from the plan filename
+- plan runs capture the starting branch and immutable `HEAD` commit before they
+  create/switch to a branch derived from the plan filename
+- the captured base is stored as branch-local metadata in `.git/config`; resume
+  and standalone review reuse it, while `--base-ref REF` explicitly replaces it
 - `--jira-task TASK` enforces `feature/TASK-<description>` branch names for
   plan creation and execution, and automatically prefixes new commit messages
   with `TASK `; adding a missing prefix rewrites the new local commit objects,
@@ -438,8 +457,8 @@ Git behavior:
 - `--branch` overrides the branch name for normal branch switching and
   worktree runs
 - review-only mode does not switch branches
-- `--review --base-ref REF` validates the ref and compares it with the current
-  `HEAD`
+- `--base-ref REF` resolves the ref to a commit, validates that it is an ancestor
+  of the execution `HEAD`, and uses that immutable commit for plan or review runs
 - dirty working trees are rejected unless `--allow-dirty` is passed
 - `--allow-dirty` applies throughout the run: newly uncommitted paths left by a
   completed task or finalize pass are logged and carried into the next phase

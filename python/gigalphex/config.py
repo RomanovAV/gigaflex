@@ -268,6 +268,7 @@ DEFAULT_CONFIG_TEXT = """[gigalphex]
 # plans_dir = docs/plans
 # progress_dir = .gigalphex/progress
 # prompts_dir = .gigalphex/prompts
+# Legacy explicit review base; leave empty to capture the launch branch and commit.
 # default_branch =
 # max_iterations = 50
 # review_iterations = 5
