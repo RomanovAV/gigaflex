@@ -19,6 +19,7 @@ from .prompts import (
     render_review_agent_prompt,
     render_review_format_retry_prompt,
     render_review_prompt,
+    render_review_synthesis_blocked_audit_prompt,
     render_review_synthesis_prompt,
     render_review_synthesis_recovery_prompt,
     render_task_completion_retry_prompt,
@@ -989,6 +990,60 @@ class Runner:
                     f"strict_error={str(recovery_error)!r}"
                 )
             result = recovery
+
+        blocked_before_audit = [
+            decision for decision in decisions if decision.decision == "blocked"
+        ]
+        if blocked_before_audit:
+            blocked_ids = [decision.finding_id for decision in blocked_before_audit]
+            self.log.diagnostic(
+                "session=review-synthesis event=blocked_audit_started "
+                f"findings={','.join(blocked_ids)!r}"
+            )
+            self.log.section("review synthesis blocked audit")
+            head_before = self._git().head_commit()
+            audit = self.synthesis_executor.run(
+                render_review_synthesis_blocked_audit_prompt(
+                    self.options.prompts.review_synthesis,
+                    findings,
+                    self._context(),
+                    result.output,
+                    blocked_ids,
+                )
+            )
+            self._prefix_new_commits(head_before, "review synthesis blocked audit")
+            if not audit.ok or audit.signal == TASK_FAILED:
+                reason = (
+                    "reported task failure"
+                    if audit.signal == TASK_FAILED
+                    else describe_failure("gigacode review synthesis blocked audit", audit)
+                )
+                raise RuntimeError(f"review synthesis blocked audit failed: {reason}")
+            try:
+                decisions = parse_synthesis_output(audit.output, expected_ids)
+            except ReviewOutputError as audit_error:
+                try:
+                    decisions = recover_synthesis_output(audit.output, expected_ids)
+                except ReviewOutputError as final_error:
+                    raise RuntimeError(
+                        "review synthesis blocked audit protocol invalid: "
+                        f"{final_error}"
+                    ) from final_error
+                self.log.diagnostic(
+                    "session=review-synthesis event=output_recovered "
+                    "method=blocked_audit_deterministic "
+                    f"strict_error={str(audit_error)!r}"
+                )
+            result = audit
+            remaining_blocked = [
+                decision.finding_id
+                for decision in decisions
+                if decision.decision == "blocked"
+            ]
+            self.log.diagnostic(
+                "session=review-synthesis event=blocked_audit_completed "
+                f"remaining={','.join(remaining_blocked)!r}"
+            )
 
         counts = {
             decision: sum(item.decision == decision for item in decisions)

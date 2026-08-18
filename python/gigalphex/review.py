@@ -21,6 +21,23 @@ SYNTHESIS_DECISION_CLOSE_RE = re.compile(r"</SYNTHESIS_DECISION>")
 FIELD_RE = re.compile(r"^([a-z_]+):[ \t]*(.*)$")
 ALLOWED_SEVERITIES = {"blocker", "major", "minor"}
 ALLOWED_SYNTHESIS_DECISIONS = {"confirmed", "rejected", "fixed", "blocked"}
+BLOCKED_CONTRADICTION_PHRASES = (
+    "already correct",
+    "already fixed",
+    "no change is needed",
+    "no changes are needed",
+    "no fix is needed",
+    "no fix needed",
+    "исправление не требуется",
+    "изменение не требуется",
+    "изменения не требуются",
+    "уже исправлен",
+    "уже исправлена",
+    "уже исправлено",
+    "уже корректен",
+    "уже корректна",
+    "уже корректно",
+)
 ALLOWED_CATEGORIES = {
     "complexity",
     "correctness",
@@ -353,10 +370,18 @@ def _parse_synthesis_decision(block: str) -> SynthesisDecision:
         raise ReviewOutputError(
             f"invalid synthesis decision {values['decision']!r}; expected one of: {allowed}"
         )
+    reason = values["reason"]
+    if decision == "blocked" and any(
+        phrase in reason.casefold() for phrase in BLOCKED_CONTRADICTION_PHRASES
+    ):
+        raise ReviewOutputError(
+            "blocked decision reason says the deliverable is already correct or "
+            "needs no fix; use rejected"
+        )
     return SynthesisDecision(
         finding_id=finding_id,
         decision=decision,
-        reason=values["reason"],
+        reason=reason,
     )
 
 

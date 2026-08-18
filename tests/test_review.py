@@ -173,6 +173,17 @@ class ReviewOutputTest(unittest.TestCase):
         with self.assertRaisesRegex(ReviewOutputError, "invalid synthesis decision"):
             parse_synthesis_output(synthesis_decision("F001", "ignored"), ["F001"])
 
+    def test_synthesis_rejects_self_contradictory_blocked_decision(self) -> None:
+        with self.assertRaisesRegex(ReviewOutputError, "use rejected"):
+            parse_synthesis_output(
+                synthesis_decision(
+                    "F001",
+                    "blocked",
+                    "The artifact is already correct, so no fix is needed.",
+                ),
+                ["F001"],
+            )
+
     def test_recovers_complete_synthesis_ledger_from_explanatory_text(self) -> None:
         output = "Validated the finding.\n" + synthesis_decision("F001") + "\nDone."
 

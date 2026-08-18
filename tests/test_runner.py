@@ -455,13 +455,60 @@ class RunnerTest(unittest.TestCase):
             progress = (tmp_path / "progress.txt").read_text(encoding="utf-8")
             self.assertNotIn("action=next_review_iteration", progress)
 
-    def test_synthesis_blocked_finding_stops_review(self) -> None:
+    def test_self_contradictory_blocker_is_reconciled_as_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
+            reconciliation_prompts = []
+
+            def reject_false_blocker(prompt):
+                reconciliation_prompts.append(prompt)
+                return ExecResult(output=synthesis_decision("F001", "rejected"))
+
             runner = Runner(
                 RunOptions(None, tmp_path / "progress.txt", finalize_enabled=False),
                 FakeExecutor(),  # type: ignore[arg-type]
                 ProgressLog(tmp_path / "progress.txt"),
+                synthesis_executor=CallbackExecutor(reject_false_blocker),  # type: ignore[arg-type]
+            )
+
+            completed = runner._accept_review_synthesis_or_raise(  # noqa: SLF001
+                ExecResult(
+                    output=synthesis_decision(
+                        "F001",
+                        "blocked",
+                        "The deliverable is already correct, so no fix is needed.",
+                    )
+                ),
+                {"quality": VALID_REVIEW_FINDING},
+            )
+
+            self.assertTrue(completed)
+            self.assertEqual(1, len(reconciliation_prompts))
+            self.assertIn(
+                "blocked decision reason says the deliverable is already correct",
+                reconciliation_prompts[0],
+            )
+
+    def test_synthesis_blocked_finding_stops_review(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            audit_prompts = []
+
+            def keep_blocked(prompt):
+                audit_prompts.append(prompt)
+                return ExecResult(
+                    output=synthesis_decision(
+                        "F001",
+                        "blocked",
+                        "The authoritative source data is unavailable.",
+                    )
+                )
+
+            runner = Runner(
+                RunOptions(None, tmp_path / "progress.txt", finalize_enabled=False),
+                FakeExecutor(),  # type: ignore[arg-type]
+                ProgressLog(tmp_path / "progress.txt"),
+                synthesis_executor=CallbackExecutor(keep_blocked),  # type: ignore[arg-type]
             )
 
             with self.assertRaisesRegex(RuntimeError, "review synthesis blocked: F001"):
@@ -475,6 +522,48 @@ class RunnerTest(unittest.TestCase):
                     ),
                     {"quality": VALID_REVIEW_FINDING},
                 )
+
+            self.assertEqual(1, len(audit_prompts))
+            self.assertIn("Automatic blocked-decision audit", audit_prompts[0])
+
+    def test_synthesis_false_blocker_is_rejected_by_focused_audit(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            audit_prompts = []
+
+            def reject_false_blocker(prompt):
+                audit_prompts.append(prompt)
+                return ExecResult(
+                    output=synthesis_decision(
+                        "F001",
+                        "rejected",
+                        "The named artifact is already correct.",
+                    )
+                )
+
+            runner = Runner(
+                RunOptions(None, tmp_path / "progress.txt", finalize_enabled=False),
+                FakeExecutor(),  # type: ignore[arg-type]
+                ProgressLog(tmp_path / "progress.txt"),
+                synthesis_executor=CallbackExecutor(reject_false_blocker),  # type: ignore[arg-type]
+            )
+
+            completed = runner._accept_review_synthesis_or_raise(  # noqa: SLF001
+                ExecResult(
+                    output=synthesis_decision(
+                        "F001",
+                        "blocked",
+                        "A concrete user decision is required.",
+                    )
+                ),
+                {"quality": VALID_REVIEW_FINDING},
+            )
+
+            self.assertTrue(completed)
+            self.assertEqual(1, len(audit_prompts))
+            self.assertIn("these finding ids: F001", audit_prompts[0])
+            progress = (tmp_path / "progress.txt").read_text(encoding="utf-8")
+            self.assertIn("event=blocked_audit_completed remaining=''", progress)
 
     def test_malformed_review_output_is_not_forwarded_to_synthesis(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

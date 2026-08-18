@@ -371,8 +371,9 @@ Review behavior:
 - the runner checks that the number and exact set of processed findings match
   the input; the structured decisions, rather than the completion signal, are
   authoritative. All-rejected ledgers complete review, fixed or confirmed
-  findings require another specialist pass, and `blocked` stops the run with
-  its reported reason
+  findings require another specialist pass. A `blocked` decision gets one
+  focused audit against the repository, plan, and named external sources;
+  only a verified blocker that remains after that audit stops the run
 - explanatory synthesis text is removed when the complete expected decision
   ledger can be recovered deterministically; if scoped ledger reconciliation is
   still malformed, the runner stops with a review-protocol error instead of
