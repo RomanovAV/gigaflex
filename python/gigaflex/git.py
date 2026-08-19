@@ -159,7 +159,7 @@ class GitService:
             "config",
             "--local",
             "--get",
-            f"branch.{branch}.gigalphexBaseCommit",
+            f"branch.{branch}.gigaflexBaseCommit",
             check=False,
         )
         commit = commit_proc.stdout.strip()
@@ -169,7 +169,7 @@ class GitService:
             "config",
             "--local",
             "--get",
-            f"branch.{branch}.gigalphexBaseBranch",
+            f"branch.{branch}.gigaflexBaseBranch",
             check=False,
         )
         base_branch = branch_proc.stdout.strip() or commit
@@ -177,7 +177,7 @@ class GitService:
             resolved = self.resolve_commit(commit)
         except GitError as exc:
             raise GitError(
-                f"stored GigaLphex base commit for {branch} no longer exists: {commit}"
+                f"stored GigaFlex base commit for {branch} no longer exists: {commit}"
             ) from exc
         return BranchBaseline(base_branch=base_branch, base_commit=resolved)
 
@@ -192,13 +192,13 @@ class GitService:
         self.run(
             "config",
             "--local",
-            f"branch.{branch}.gigalphexBaseBranch",
+            f"branch.{branch}.gigaflexBaseBranch",
             baseline.base_branch or commit,
         )
         self.run(
             "config",
             "--local",
-            f"branch.{branch}.gigalphexBaseCommit",
+            f"branch.{branch}.gigaflexBaseCommit",
             commit,
         )
 
@@ -302,7 +302,7 @@ class GitService:
         self.run(
             "update-ref",
             "-m",
-            f"gigalphex: prefix new commits with {prefix}",
+            f"gigaflex: prefix new commits with {prefix}",
             "HEAD",
             new_head,
             head,
@@ -347,7 +347,7 @@ class GitService:
             self.run("switch", "-c", branch, start_point)
 
     def worktree_path(self, branch: str) -> Path:
-        return self.repo_root() / ".gigalphex" / "worktrees" / worktree_dir_name(branch)
+        return self.repo_root() / ".gigaflex" / "worktrees" / worktree_dir_name(branch)
 
     def ensure_worktree(self, branch: str, start_point: str = "HEAD") -> Path:
         if not branch:
@@ -398,10 +398,10 @@ class GitService:
         index_path.parent.mkdir(parents=True, exist_ok=True)
         snapshot_env = {
             "GIT_INDEX_FILE": str(index_path),
-            "GIT_AUTHOR_NAME": "GigaLphex",
-            "GIT_AUTHOR_EMAIL": "gigalphex@localhost",
-            "GIT_COMMITTER_NAME": "GigaLphex",
-            "GIT_COMMITTER_EMAIL": "gigalphex@localhost",
+            "GIT_AUTHOR_NAME": "GigaFlex",
+            "GIT_AUTHOR_EMAIL": "gigaflex@localhost",
+            "GIT_COMMITTER_NAME": "GigaFlex",
+            "GIT_COMMITTER_EMAIL": "gigaflex@localhost",
         }
         try:
             self.run("read-tree", head, env=snapshot_env)
@@ -412,7 +412,7 @@ class GitService:
                 tree,
                 "-p",
                 head,
-                input_text="gigalphex: ephemeral review snapshot\n",
+                input_text="gigaflex: ephemeral review snapshot\n",
                 env=snapshot_env,
             ).stdout.strip()
         finally:
@@ -479,7 +479,7 @@ class _ReviewWorktreeContext:
 
     def __enter__(self) -> ReviewWorktreeSet:
         parent = str(self.manager.temp_parent) if self.manager.temp_parent else None
-        self.root = Path(tempfile.mkdtemp(prefix="gigalphex-review-", dir=parent))
+        self.root = Path(tempfile.mkdtemp(prefix="gigaflex-review-", dir=parent))
         try:
             snapshot = self.manager.git.create_review_snapshot(
                 self.root / "snapshot.index"

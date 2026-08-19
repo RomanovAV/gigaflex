@@ -1,6 +1,6 @@
 ---
 name: planning
-description: Create gigalphex-compatible implementation plans with interactive context gathering.
+description: Create gigaflex-compatible implementation plans with interactive context gathering.
 ---
 
 # Interactive Implementation Planning
@@ -136,4 +136,4 @@ After writing the plan:
 3. stop and return control to the user
 
 Do not implement tasks, modify source files, create a branch, or start the
-gigalphex execution loop.
+gigaflex execution loop.

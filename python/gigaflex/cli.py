@@ -49,7 +49,7 @@ BRANCH_DESCRIPTION_RE = re.compile(r"^[A-Za-z0-9._-]+$")
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="gigalphex")
+    parser = argparse.ArgumentParser(prog="gigaflex")
     parser.add_argument("plan_file", nargs="?", help="path to markdown plan file")
     parser.add_argument(
         "--openspec",
@@ -58,11 +58,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="execute a local OpenSpec change directory using its tasks.md",
     )
     parser.add_argument("--config", type=Path, help="config file path")
-    parser.add_argument("--init", action="store_true", help="create local .gigalphex config")
+    parser.add_argument("--init", action="store_true", help="create local .gigaflex config")
     parser.add_argument(
         "--init-prompts",
         action="store_true",
-        help="create local .gigalphex prompt templates that override global prompts",
+        help="create local .gigaflex prompt templates that override global prompts",
     )
     parser.add_argument("--init-git", action="store_true", help="run git init first when current directory is not a git repository")
     parser.add_argument(
@@ -73,7 +73,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--install-superpowers-converter-skill",
         action="store_true",
-        help="install the bundled Superpowers-to-GigaLphex conversion skill for GigaCode",
+        help="install the bundled Superpowers-to-GigaFlex conversion skill for GigaCode",
     )
     parser.add_argument(
         "--force-skill-install",
@@ -167,7 +167,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def should_auto_init(args: argparse.Namespace) -> bool:
-    if args.dry_run or args.review or args.config is not None or Path(".gigalphex/config").exists():
+    if args.dry_run or args.review or args.config is not None or Path(".gigaflex/config").exists():
         return False
     if args.plan:
         return True
@@ -252,7 +252,7 @@ def select_run_baseline(
     ):
         branch_detail = f" for branch {execution_branch}" if execution_branch else ""
         raise GitError(
-            "no GigaLphex review base is stored"
+            "no GigaFlex review base is stored"
             f"{branch_detail}; pass --base-ref REF once to select it"
         )
 
@@ -278,7 +278,7 @@ def ensure_baseline_is_ancestor(
     if git.is_ancestor(baseline.base_commit, descendant):
         return
     raise GitError(
-        "GigaLphex review base "
+        "GigaFlex review base "
         f"{baseline.base_branch} ({baseline.base_commit}) is not an ancestor of "
         f"{descendant}; pass --base-ref REF to replace it"
     )
@@ -350,7 +350,7 @@ def main(argv: Optional[list[str]] = None) -> int:
             local_fallback_written.extend(init_project_prompt_templates())
         except OSError as exc:
             print(
-                f"warning: could not initialize global or local gigalphex files: {exc}",
+                f"warning: could not initialize global or local gigaflex files: {exc}",
                 file=sys.stderr,
             )
 
@@ -407,11 +407,11 @@ def main(argv: Optional[list[str]] = None) -> int:
             written.extend(init_project_prompt_templates())
         written = list(dict.fromkeys(written))
         if written:
-            print("initialized gigalphex files:")
+            print("initialized gigaflex files:")
             for path in written:
                 print(f"- {path}")
         else:
-            print("requested gigalphex files already initialized")
+            print("requested gigaflex files already initialized")
         return 0
 
     if should_use_interactive_plan(args):
@@ -421,7 +421,7 @@ def main(argv: Optional[list[str]] = None) -> int:
         if not planning_skill_installed(planning_cfg.gigacode_skills_dir):
             expected_skill = planning_skill_path(planning_cfg.gigacode_skills_dir)
             print(f"error: GigaCode planning skill not found: {expected_skill}", file=sys.stderr)
-            install_command = "gigalphex --install-planning-skill"
+            install_command = "gigaflex --install-planning-skill"
             if args.skill_dir:
                 install_command += f" --skill-dir {planning_cfg.gigacode_skills_dir}"
             print(f"install it with: {install_command}", file=sys.stderr)
@@ -439,7 +439,7 @@ def main(argv: Optional[list[str]] = None) -> int:
             path for path in project_config_written if path not in auto_init_written
         )
         if project_config_written:
-            print(f"initialized local gigalphex config: {Path('.gigalphex/config')}")
+            print(f"initialized local gigaflex config: {Path('.gigaflex/config')}")
 
     if args.init_git and not args.dry_run:
         git = GitService(Path("."))
@@ -530,7 +530,7 @@ def main(argv: Optional[list[str]] = None) -> int:
         if args.install_planning_skill:
             installers.append(("planning", install_planning_skill))
         if args.install_superpowers_converter_skill:
-            installers.append(("superpowers-to-gigalphex", install_superpowers_converter_skill))
+            installers.append(("superpowers-to-gigaflex", install_superpowers_converter_skill))
         for name, installer in installers:
             try:
                 skill_path, written = installer(
@@ -765,7 +765,7 @@ def main(argv: Optional[list[str]] = None) -> int:
         dashboard_html,
         name=progress_base,
         plan_file=plan_file,
-        plan_kind=plan_source.kind if plan_source else "gigalphex",
+        plan_kind=plan_source.kind if plan_source else "gigaflex",
         progress_file=progress_file,
         branch=git.current_branch() if not args.dry_run and git.is_repo() else "",
         tasks_enabled=not args.review,
@@ -898,7 +898,7 @@ def main(argv: Optional[list[str]] = None) -> int:
         parallel_review=not args.no_parallel_review,
         prompts=prompts,
         jira_task=args.jira_task,
-        plan_kind=plan_source.kind if plan_source else "gigalphex",
+        plan_kind=plan_source.kind if plan_source else "gigaflex",
         plan_source=plan_source.source_path if plan_source else None,
         plan_context_files=plan_source.context_paths if plan_source else (),
         task_completion_retries=cfg.retry_count,

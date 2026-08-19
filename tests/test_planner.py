@@ -6,7 +6,7 @@ import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "python"))
 
-from gigalphex.planner import clean_plan_output, next_plan_path, slugify
+from gigaflex.planner import clean_plan_output, next_plan_path, slugify
 
 
 class PlannerTest(unittest.TestCase):

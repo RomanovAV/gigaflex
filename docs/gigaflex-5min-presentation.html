@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>gigalphex — SDD и автономность за 5 минут</title>
+  <title>gigaflex — SDD и автономность за 5 минут</title>
   <style>
     :root {
       color-scheme: dark;
@@ -526,10 +526,10 @@
   </style>
 </head>
 <body>
-  <main class="deck" aria-label="Презентация gigalphex про SDD и автономность">
+  <main class="deck" aria-label="Презентация gigaflex про SDD и автономность">
     <div class="topbar" aria-hidden="true">
       <div class="window-dots"><span></span><span></span><span></span></div>
-      <div class="crumbs"><span>gigalphex</span><span>/</span><strong>5-minute-sdd-overview.html</strong></div>
+      <div class="crumbs"><span>gigaflex</span><span>/</span><strong>5-minute-sdd-overview.html</strong></div>
       <div class="status-chip">OpenSpec ready</div>
     </div>
 
@@ -538,7 +538,7 @@
         <div>
           <p class="kicker">5 минут · главная идея проекта</p>
           <h1>SDD через <span class="accent-blue">OpenSpec</span> — с автономным исполнением</h1>
-          <p class="lead">Спецификация остаётся контрактом. GigaLphex превращает её задачи в контролируемый цикл: один scope, проверки, коммит, наблюдаемость и независимое ревью.</p>
+          <p class="lead">Спецификация остаётся контрактом. GigaFlex превращает её задачи в контролируемый цикл: один scope, проверки, коммит, наблюдаемость и независимое ревью.</p>
           <div class="tag-line">
             <span class="tag blue">spec-driven</span>
             <span class="tag green">autonomous loop</span>
@@ -567,7 +567,7 @@
       <div class="slide-frame">
         <div>
           <p class="kicker">Spec-driven development</p>
-          <h2>OpenSpec задаёт «что», GigaLphex автономно ведёт «как»</h2>
+          <h2>OpenSpec задаёт «что», GigaFlex автономно ведёт «как»</h2>
           <p class="lead">Runner принимает change-директорию целиком. Задачи исполняются по очереди, а контекст спецификации защищён от случайного переписывания агентом.</p>
           <ul class="bullets">
             <li>`proposal.md`, `design.md` и delta specs — read-only контекст.</li>
@@ -622,9 +622,9 @@
           </ul>
           <div class="talk-time">2:20 — 3:05</div>
         </div>
-        <div class="dashboard" aria-label="Пример live dashboard GigaLphex">
+        <div class="dashboard" aria-label="Пример live dashboard GigaFlex">
           <div class="dash-head">
-            <div><div class="dash-eyebrow">GigaLphex progress</div><h3>Add search filters</h3><p>Working on task 2: Implement filters</p></div>
+            <div><div class="dash-eyebrow">GigaFlex progress</div><h3>Add search filters</h3><p>Working on task 2: Implement filters</p></div>
             <div class="dash-status">Running · 4m 18s</div>
           </div>
           <div class="dash-phases">
@@ -689,7 +689,7 @@
         <div>
           <p class="kicker">Один change · одна команда</p>
           <h2>OpenSpec становится входом в автономный, но проверяемый delivery</h2>
-          <p class="lead">Команда задаёт контракт. GigaLphex ведёт задачи, Git, retries, review и finalize. Архивация change остаётся осознанным финальным шагом.</p>
+          <p class="lead">Команда задаёт контракт. GigaFlex ведёт задачи, Git, retries, review и finalize. Архивация change остаётся осознанным финальным шагом.</p>
           <ul class="bullets">
             <li>Для разработчика — меньше ручной координации.</li>
             <li>Для команды — единый SDD-процесс и воспроизводимый след.</li>
@@ -700,14 +700,14 @@
         <div class="panel">
           <div class="panel-title"><span>terminal</span><span class="accent-green">start here</span></div>
           <div class="command">
-            <div><span class="prompt">$</span> python3 -m gigalphex.cli \</div>
+            <div><span class="prompt">$</span> python3 -m gigaflex.cli \</div>
             <div>&nbsp;&nbsp;<span class="flag">--openspec</span> <span class="path">openspec/changes/add-search</span></div>
             <div class="result">→ live dashboard · task commits · isolated review</div>
             <div class="result">→ ready to archive with: openspec archive add-search</div>
           </div>
           <div class="qr-row">
-            <img src="assets/gigalphex-repo-qr.png" alt="QR: репозиторий GigaLphex на GitHub">
-            <div><h3>Код и инструкции</h3><p>README, OpenSpec-сценарий, интерактивная настройка и руководство по реальным задачам.</p><a href="https://github.com/RomanovAV/gigalphex" target="_blank" rel="noreferrer">github.com/RomanovAV/gigalphex</a></div>
+            <img src="assets/gigaflex-repo-qr.png" alt="QR: репозиторий GigaFlex на GitHub">
+            <div><h3>Код и инструкции</h3><p>README, OpenSpec-сценарий, интерактивная настройка и руководство по реальным задачам.</p><a href="https://github.com/RomanovAV/gigaflex" target="_blank" rel="noreferrer">github.com/RomanovAV/gigaflex</a></div>
           </div>
         </div>
       </div>
@@ -755,7 +755,7 @@
       counter.textContent = `${String(index + 1).padStart(2, "0")} / ${String(slides.length).padStart(2, "0")}`;
       prev.disabled = index === 0;
       next.disabled = index === slides.length - 1;
-      document.title = `gigalphex — ${slides[index].dataset.title || `slide-${index + 1}`}`;
+      document.title = `gigaflex — ${slides[index].dataset.title || `slide-${index + 1}`}`;
       if (updateHash) history.replaceState(null, "", `#${index + 1}`);
       fitActiveSlide();
     }

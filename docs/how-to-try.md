@@ -1,10 +1,10 @@
-# Как попробовать GigaLphex
+# Как попробовать GigaFlex
 
 Интерактивная версия этой инструкции:
 [`how-to-try.html`](how-to-try.html).
 
-Основной сценарий GigaLphex — автономное выполнение OpenSpec change. OpenSpec
-задаёт контракт, а GigaLphex по очереди выполняет группы из `tasks.md`, проверяет
+Основной сценарий GigaFlex — автономное выполнение OpenSpec change. OpenSpec
+задаёт контракт, а GigaFlex по очереди выполняет группы из `tasks.md`, проверяет
 результат и создаёт отдельные коммиты. После всех задач весь накопленный change
 проходит независимое ревью и финальную проверку.
 
@@ -13,11 +13,11 @@
 Нужны git-репозиторий и установленный, авторизованный `gigacode`. Команды ниже
 запускайте из корня проекта, который хотите изменить:
 
-[Скачать GigaLphex с GitHub](https://github.com/RomanovAV/gigalphex/archive/refs/heads/main.zip).
+[Скачать GigaFlex с GitHub](https://github.com/RomanovAV/gigaflex/archive/refs/heads/main.zip).
 
 ```bash
 command -v gigacode
-PYTHONPATH=/path/to/gigalphex/python python3 -m gigalphex.cli --init
+PYTHONPATH=/path/to/gigaflex/python python3 -m gigaflex.cli --init
 ```
 
 Перед первым запуском лучше выбрать небольшую задачу с понятным результатом и
@@ -29,14 +29,14 @@ PYTHONPATH=/path/to/gigalphex/python python3 -m gigalphex.cli --init
 `tasks.md` обычным OpenSpec-процессом и передайте ее целиком:
 
 ```bash
-PYTHONPATH=/path/to/gigalphex/python python3 -m gigalphex.cli \
+PYTHONPATH=/path/to/gigaflex/python python3 -m gigaflex.cli \
   --openspec openspec/changes/add-dark-mode
 ```
 
-GigaLphex использует `proposal.md`, `design.md` и `specs/**/*.md` как read-only
+GigaFlex использует `proposal.md`, `design.md` и `specs/**/*.md` как read-only
 контекст. Изменяемым чеклистом остаётся `tasks.md`: каждая группа `## N. ...`
 выполняется как отдельная итерация и отдельный коммит. Если генератор создал
-локализованные task-секции без чекбоксов, GigaLphex добавит под завершённой
+локализованные task-секции без чекбоксов, GigaFlex добавит под завершённой
 секцией устойчивый marker `- [x] N. <название>`.
 
 Перед началом runner сохраняет точный base commit. После выполнения всех групп
@@ -48,20 +48,20 @@ Synthesis исправляет подтверждённые проблемы, п
 finalize.
 
 Все существующие skills, rules, tools и настройки GigaCode продолжают работать
-в каждой сессии: GigaLphex использует настроенный CLI и контекст целевого
+в каждой сессии: GigaFlex использует настроенный CLI и контекст целевого
 проекта, а не заменяет командное окружение.
 
-После успешного запуска GigaLphex покажет команду
+После успешного запуска GigaFlex покажет команду
 `openspec archive <change-name>`, но не архивирует change автоматически. Сначала
 проверьте итоговый diff и результаты в dashboard, затем выполните archive как
 явный OpenSpec lifecycle step.
 
 ### Модели по этапам
 
-Для разных фаз можно выбрать разные модели в `.gigalphex/config`:
+Для разных фаз можно выбрать разные модели в `.gigaflex/config`:
 
 ```ini
-[gigalphex]
+[gigaflex]
 plan_model =
 task_model =
 review_model =
@@ -71,7 +71,7 @@ finalize_model =
 В OpenSpec-запуске `task_model` выполняет задачи и synthesis, `review_model`
 используют read-only reviewers, а `finalize_model` — финальная проверка.
 `plan_model` применяется при создании обычного плана через `--plan`. Если
-настроенная модель недоступна, GigaLphex повторяет вызов с default-моделью
+настроенная модель недоступна, GigaFlex повторяет вызов с default-моделью
 GigaCode.
 
 ## Дополнительный путь: Superpowers
@@ -79,21 +79,21 @@ GigaCode.
 Готовый implementation plan из Superpowers можно выполнить напрямую:
 
 ```bash
-PYTHONPATH=/path/to/gigalphex/python python3 -m gigalphex.cli \
+PYTHONPATH=/path/to/gigaflex/python python3 -m gigaflex.cli \
   docs/superpowers/plans/2026-07-01-add-dark-mode.md
 ```
 
 Если есть только design spec, сначала установите skill-конвертер:
 
 ```bash
-PYTHONPATH=/path/to/gigalphex/python python3 -m gigalphex.cli \
+PYTHONPATH=/path/to/gigaflex/python python3 -m gigaflex.cli \
   --install-superpowers-converter-skill
 ```
 
 Затем попросите GigaCode преобразовать spec в план:
 
 ```text
-Use the superpowers-to-gigalphex skill to convert
+Use the superpowers-to-gigaflex skill to convert
 docs/superpowers/specs/2026-07-01-add-dark-mode.md into docs/plans/add-dark-mode.md.
 ```
 
@@ -105,21 +105,21 @@ docs/superpowers/specs/2026-07-01-add-dark-mode.md into docs/plans/add-dark-mode
 Один раз установите skill планирования:
 
 ```bash
-PYTHONPATH=/path/to/gigalphex/python python3 -m gigalphex.cli \
+PYTHONPATH=/path/to/gigaflex/python python3 -m gigaflex.cli \
   --install-planning-skill
 ```
 
 Создайте план из текстового запроса:
 
 ```bash
-PYTHONPATH=/path/to/gigalphex/python python3 -m gigalphex.cli \
+PYTHONPATH=/path/to/gigaflex/python python3 -m gigaflex.cli \
   --plan "добавить health check endpoint"
 ```
 
 Проверьте созданный файл в `docs/plans/` и запустите его:
 
 ```bash
-PYTHONPATH=/path/to/gigalphex/python python3 -m gigalphex.cli \
+PYTHONPATH=/path/to/gigaflex/python python3 -m gigaflex.cli \
   docs/plans/20260723-add-health-check-endpoint.md
 ```
 
@@ -130,16 +130,16 @@ PYTHONPATH=/path/to/gigalphex/python python3 -m gigalphex.cli \
 
 ## Конфигурация
 
-Команды выше намеренно не содержат необязательных параметров. GigaLphex читает
-общие настройки из `~/.config/gigalphex/config`, а проектные переопределения —
-из `.gigalphex/config`. Команда `--init` подготовит локальный config, если его
+Команды выше намеренно не содержат необязательных параметров. GigaFlex читает
+общие настройки из `~/.config/gigaflex/config`, а проектные переопределения —
+из `.gigaflex/config`. Команда `--init` подготовит локальный config, если его
 ещё нет. Для OpenSpec change отдельный planning skill не требуется.
 
 ## Где смотреть результат
 
-- live dashboard — в `.gigalphex/progress/status-<run>.html`;
-- тот же статус для интеграций — в `.gigalphex/progress/status-<run>.json`;
-- подробный transcript — в `.gigalphex/progress/progress-<run>.txt`;
-- статистика моделей, времени и токенов — в `.gigalphex/progress/stats-<run>.json`;
+- live dashboard — в `.gigaflex/progress/status-<run>.html`;
+- тот же статус для интеграций — в `.gigaflex/progress/status-<run>.json`;
+- подробный transcript — в `.gigaflex/progress/progress-<run>.txt`;
+- статистика моделей, времени и токенов — в `.gigaflex/progress/stats-<run>.json`;
 - созданные коммиты — через `git log --oneline`;
 - оставшиеся изменения — через `git status --short`.

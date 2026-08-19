@@ -1,4 +1,4 @@
-Use the installed `planning` skill to create a gigalphex-compatible implementation plan interactively.
+Use the installed `planning` skill to create a gigaflex-compatible implementation plan interactively.
 
 User request:
 

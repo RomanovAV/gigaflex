@@ -115,8 +115,8 @@ def parse_task_number(value: str) -> int:
         return 0
 
 
-def parse_plan(content: str, *, plan_format: str = "gigalphex") -> Plan:
-    if plan_format not in {"gigalphex", "openspec"}:
+def parse_plan(content: str, *, plan_format: str = "gigaflex") -> Plan:
+    if plan_format not in {"gigaflex", "openspec"}:
         raise ValueError(f"unsupported plan format: {plan_format}")
     plan = Plan()
     current: Optional[Task] = None
@@ -186,7 +186,7 @@ def parse_plan(content: str, *, plan_format: str = "gigalphex") -> Plan:
     return plan
 
 
-def parse_plan_file(path: Path, *, plan_format: str = "gigalphex") -> Plan:
+def parse_plan_file(path: Path, *, plan_format: str = "gigaflex") -> Plan:
     return parse_plan(path.read_text(encoding="utf-8"), plan_format=plan_format)
 
 
@@ -195,7 +195,7 @@ def resolve_markdown_plan(path: Path) -> PlanSource:
     if not resolved.is_file():
         raise ValueError(f"plan file not found: {resolved}")
     return PlanSource(
-        kind="gigalphex",
+        kind="gigaflex",
         source_path=resolved,
         checklist_path=resolved,
     )

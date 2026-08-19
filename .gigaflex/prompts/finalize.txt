@@ -9,10 +9,10 @@ Success requires:
 - finalization creates no uncommitted changes and preserves any pre-existing user changes untouched
 
 If final verification succeeds, briefly summarize the checks and output exactly this as the final non-empty line:
-<<<GIGALPHEX:FINALIZE_DONE>>>
+<<<GIGAFLEX:FINALIZE_DONE>>>
 
 If validation fails or the branch cannot be left clean after reasonable fixes, explain the blocker and output exactly this as the final non-empty line:
-<<<GIGALPHEX:FINALIZE_FAILED>>>
+<<<GIGAFLEX:FINALIZE_FAILED>>>
 
 Progress log: {progress_file}
 Plain text output only.

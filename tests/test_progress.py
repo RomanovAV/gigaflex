@@ -5,7 +5,7 @@ import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "python"))
 
-from gigalphex.progress import ProgressLog
+from gigaflex.progress import ProgressLog
 
 
 class ProgressLogTest(unittest.TestCase):

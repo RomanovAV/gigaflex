@@ -16,7 +16,7 @@ class PromptContext:
     progress_file: Path
     default_branch: str
     jira_task: str = ""
-    plan_kind: str = "gigalphex"
+    plan_kind: str = "gigaflex"
     plan_source: Optional[Path] = None
     plan_context_files: tuple[Path, ...] = ()
 
@@ -79,7 +79,7 @@ Use an appropriate conventional-commit type and a brief task description.
 Never claim success when validation or git commit failed.
 
 If the selected task cannot be completed after reasonable fixes, briefly explain the blocker and output exactly this as the final non-empty line:
-<<<GIGALPHEX:TASK_FAILED>>>
+<<<GIGAFLEX:TASK_FAILED>>>
 
 Progress log: {progress_file}
 Default branch: {default_branch}
@@ -153,7 +153,7 @@ MAKE_PLAN_PROMPT = """Create an implementation plan for this request:
 
 {plan_request}
 
-Write a gigalphex-compatible markdown plan. The plan must be directly executable by an autonomous coding agent.
+Write a gigaflex-compatible markdown plan. The plan must be directly executable by an autonomous coding agent.
 
 Required format:
 
@@ -189,7 +189,7 @@ Rules:
 - Output only the markdown plan, with no surrounding commentary or code fences.
 """
 
-PLAN_SKILL_PROMPT = """Use the installed `planning` skill to create a gigalphex-compatible implementation plan interactively.
+PLAN_SKILL_PROMPT = """Use the installed `planning` skill to create a gigaflex-compatible implementation plan interactively.
 
 User request:
 
@@ -351,7 +351,7 @@ reason: concrete verification result on one line
 </SYNTHESIS_DECISION>
 
 - output no introductory text, summaries, markdown fences, counts, or text outside decision blocks
-- when there are zero supplied findings, or every supplied finding is `rejected`, you may append `<<<GIGALPHEX:REVIEW_DONE>>>` as the final non-empty line
+- when there are zero supplied findings, or every supplied finding is `rejected`, you may append `<<<GIGAFLEX:REVIEW_DONE>>>` as the final non-empty line
 - the structured decisions are authoritative and the runner derives completion from them; a missing or premature completion signal does not replace, invalidate, or override a complete decision ledger
 - if any finding is `fixed`, `confirmed`, or `blocked`, omit the review completion signal; fixed and confirmed findings require another specialist review pass, while blocked findings trigger a runner-owned focused audit and stop the run only when that audit confirms them
 """
@@ -400,10 +400,10 @@ Success requires:
 - finalization creates no uncommitted changes and preserves any pre-existing user changes untouched
 
 If final verification succeeds, briefly summarize the checks and output exactly this as the final non-empty line:
-<<<GIGALPHEX:FINALIZE_DONE>>>
+<<<GIGAFLEX:FINALIZE_DONE>>>
 
 If validation fails or the branch cannot be left clean after reasonable fixes, explain the blocker and output exactly this as the final non-empty line:
-<<<GIGALPHEX:FINALIZE_FAILED>>>
+<<<GIGAFLEX:FINALIZE_FAILED>>>
 
 Progress log: {progress_file}
 Plain text output only.

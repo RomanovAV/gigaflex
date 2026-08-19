@@ -7,9 +7,9 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "python"))
 
-from gigalphex.config import Config, init_global_config, init_global_prompt_templates, load_config
-from gigalphex.executor import GigaCodeExecutor
-from gigalphex.prompts import DEFAULT_PROMPTS
+from gigaflex.config import Config, init_global_config, init_global_prompt_templates, load_config
+from gigaflex.executor import GigaCodeExecutor
+from gigaflex.prompts import DEFAULT_PROMPTS
 
 
 class ConfigTest(unittest.TestCase):
@@ -75,7 +75,7 @@ class ConfigTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             config = Path(tmp) / "config"
             config.write_text(
-                """[gigalphex]
+                """[gigaflex]
 retry_patterns = temporary one, temporary two
 rate_limit_patterns = limit one, limit two
 wait_on_rate_limit = 12.5
@@ -93,7 +93,7 @@ wait_on_rate_limit = 12.5
         with tempfile.TemporaryDirectory() as tmp:
             config = Path(tmp) / "config"
             config.write_text(
-                "[gigalphex]\ngigacode_args = --debug\n",
+                "[gigaflex]\ngigacode_args = --debug\n",
                 encoding="utf-8",
             )
 
@@ -116,7 +116,7 @@ wait_on_rate_limit = 12.5
                 os.environ,
                 {
                     "HOME": str(home),
-                    "GIGALPHEX_GIGACODE_ARGS": "-p {prompt}",
+                    "GIGAFLEX_GIGACODE_ARGS": "-p {prompt}",
                 },
                 clear=True,
             ):
@@ -137,7 +137,7 @@ wait_on_rate_limit = 12.5
         with tempfile.TemporaryDirectory() as tmp:
             config = Path(tmp) / "config"
             config.write_text(
-                "[gigalphex]\ngigacode_interactive_args = -i {prompt}\n",
+                "[gigaflex]\ngigacode_interactive_args = -i {prompt}\n",
                 encoding="utf-8",
             )
 
@@ -152,7 +152,7 @@ wait_on_rate_limit = 12.5
             config = tmp_path / "config"
             skills_dir = tmp_path / "custom-skills"
             config.write_text(
-                f"[gigalphex]\ngigacode_skills_dir = {skills_dir}\n",
+                f"[gigaflex]\ngigacode_skills_dir = {skills_dir}\n",
                 encoding="utf-8",
             )
 
@@ -161,7 +161,7 @@ wait_on_rate_limit = 12.5
     def test_config_can_disable_finalize(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             config = Path(tmp) / "config"
-            config.write_text("[gigalphex]\nfinalize_enabled = false\n", encoding="utf-8")
+            config.write_text("[gigaflex]\nfinalize_enabled = false\n", encoding="utf-8")
 
             self.assertFalse(load_config(config).finalize_enabled)
 
@@ -170,16 +170,16 @@ wait_on_rate_limit = 12.5
             tmp_path = Path(tmp)
             home = tmp_path / "home"
             project = tmp_path / "project"
-            global_dir = home / ".config/gigalphex"
-            local_dir = project / ".gigalphex"
+            global_dir = home / ".config/gigaflex"
+            local_dir = project / ".gigaflex"
             global_dir.mkdir(parents=True)
             local_dir.mkdir(parents=True)
             (global_dir / "config").write_text(
-                "[gigalphex]\ntask_model = global-task\nreview_workers = 2\n",
+                "[gigaflex]\ntask_model = global-task\nreview_workers = 2\n",
                 encoding="utf-8",
             )
             (local_dir / "config").write_text(
-                "[gigalphex]\ntask_model = local-task\n",
+                "[gigaflex]\ntask_model = local-task\n",
                 encoding="utf-8",
             )
             original_cwd = Path.cwd()
@@ -199,20 +199,20 @@ wait_on_rate_limit = 12.5
             home = tmp_path / "home"
             project = tmp_path / "project"
             explicit = tmp_path / "explicit-config"
-            global_dir = home / ".config/gigalphex"
-            local_dir = project / ".gigalphex"
+            global_dir = home / ".config/gigaflex"
+            local_dir = project / ".gigaflex"
             global_dir.mkdir(parents=True)
             local_dir.mkdir(parents=True)
             (global_dir / "config").write_text(
-                "[gigalphex]\ntask_model = global-task\n",
+                "[gigaflex]\ntask_model = global-task\n",
                 encoding="utf-8",
             )
             (local_dir / "config").write_text(
-                "[gigalphex]\ntask_model = local-task\n",
+                "[gigaflex]\ntask_model = local-task\n",
                 encoding="utf-8",
             )
             explicit.write_text(
-                "[gigalphex]\ntask_model = explicit-task\n",
+                "[gigaflex]\ntask_model = explicit-task\n",
                 encoding="utf-8",
             )
             original_cwd = Path.cwd()
@@ -231,11 +231,11 @@ wait_on_rate_limit = 12.5
             with patch.dict(os.environ, {"HOME": str(home)}):
                 written = init_global_config()
 
-            config = home / ".config/gigalphex/config"
+            config = home / ".config/gigaflex/config"
             self.assertEqual([config], written)
             self.assertTrue(config.is_file())
             text = config.read_text(encoding="utf-8")
-            self.assertIn("[gigalphex]", text)
+            self.assertIn("[gigaflex]", text)
             self.assertIn("# task_model =", text)
             self.assertIn("# review_workers = 5", text)
             self.assertIn("# finalize_enabled = true", text)
@@ -243,23 +243,23 @@ wait_on_rate_limit = 12.5
     def test_init_global_config_does_not_overwrite_existing_file(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             home = Path(tmp) / "home"
-            config = home / ".config/gigalphex/config"
+            config = home / ".config/gigaflex/config"
             config.parent.mkdir(parents=True)
-            config.write_text("[gigalphex]\ntask_model = keep-me\n", encoding="utf-8")
+            config.write_text("[gigaflex]\ntask_model = keep-me\n", encoding="utf-8")
 
             with patch.dict(os.environ, {"HOME": str(home)}):
                 written = init_global_config()
 
             self.assertEqual([], written)
             self.assertEqual(
-                "[gigalphex]\ntask_model = keep-me\n",
+                "[gigaflex]\ntask_model = keep-me\n",
                 config.read_text(encoding="utf-8"),
             )
 
     def test_init_global_prompts_creates_templates_without_overwriting(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             home = Path(tmp) / "home"
-            prompt_dir = home / ".config/gigalphex/prompts"
+            prompt_dir = home / ".config/gigaflex/prompts"
             prompt_dir.mkdir(parents=True)
             existing = prompt_dir / "task.txt"
             existing.write_text("keep global task", encoding="utf-8")
@@ -276,7 +276,7 @@ wait_on_rate_limit = 12.5
     def test_init_global_prompts_updates_an_unchanged_previous_default(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             home = Path(tmp) / "home"
-            prompt_dir = home / ".config/gigalphex/prompts"
+            prompt_dir = home / ".config/gigaflex/prompts"
             prompt_dir.mkdir(parents=True)
             finalize = prompt_dir / "finalize.txt"
             finalize.write_text(
@@ -301,7 +301,7 @@ Plain text output only.
     def test_init_global_prompts_updates_legacy_review_contract(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             home = Path(tmp) / "home"
-            prompt_dir = home / ".config/gigalphex/prompts"
+            prompt_dir = home / ".config/gigaflex/prompts"
             prompt_dir.mkdir(parents=True)
             review = prompt_dir / "review.txt"
             review.write_text(

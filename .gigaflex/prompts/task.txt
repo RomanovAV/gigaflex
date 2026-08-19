@@ -37,7 +37,7 @@ Use an appropriate conventional-commit type and a brief task description.
 Never claim success when validation or git commit failed.
 
 If the selected task cannot be completed after reasonable fixes, briefly explain the blocker and output exactly this as the final non-empty line:
-<<<GIGALPHEX:TASK_FAILED>>>
+<<<GIGAFLEX:TASK_FAILED>>>
 
 Progress log: {progress_file}
 Default branch: {default_branch}

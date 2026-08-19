@@ -2,7 +2,7 @@ Create an implementation plan for this request:
 
 {plan_request}
 
-Write a gigalphex-compatible markdown plan. The plan must be directly executable by an autonomous coding agent.
+Write a gigaflex-compatible markdown plan. The plan must be directly executable by an autonomous coding agent.
 
 Required format:
 

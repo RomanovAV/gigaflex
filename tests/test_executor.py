@@ -12,8 +12,8 @@ from unittest.mock import MagicMock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "python"))
 
-from gigalphex.executor import ExecResult, GigaCodeExecutor
-from gigalphex.stats import RunStatistics
+from gigaflex.executor import ExecResult, GigaCodeExecutor
+from gigaflex.stats import RunStatistics
 
 
 def write_script(path: Path, body: str) -> Path:
@@ -200,7 +200,7 @@ class ExecutorTest(unittest.TestCase):
 
         with (
             patch.object(executor, "_run_with_retries", return_value=success),
-            patch("gigalphex.executor.as_completed", side_effect=KeyboardInterrupt),
+            patch("gigaflex.executor.as_completed", side_effect=KeyboardInterrupt),
             patch.object(executor, "terminate_active") as terminate_active,
         ):
             with self.assertRaises(KeyboardInterrupt):
@@ -357,10 +357,10 @@ Path({str(output_file)!r}).write_text(json.dumps({{"argv": sys.argv[1:]}}))
 
         with (
             patch(
-                "gigalphex.executor._capture_terminal_state",
+                "gigaflex.executor._capture_terminal_state",
                 return_value=terminal_state,
             ),
-            patch("gigalphex.executor._restore_terminal_state") as restore,
+            patch("gigaflex.executor._restore_terminal_state") as restore,
             patch(
                 "subprocess.run",
                 return_value=subprocess.CompletedProcess([], returncode=0),
@@ -381,10 +381,10 @@ Path({str(output_file)!r}).write_text(json.dumps({{"argv": sys.argv[1:]}}))
 
         with (
             patch(
-                "gigalphex.executor._capture_terminal_state",
+                "gigaflex.executor._capture_terminal_state",
                 return_value=terminal_state,
             ),
-            patch("gigalphex.executor._restore_terminal_state") as restore,
+            patch("gigaflex.executor._restore_terminal_state") as restore,
             patch("subprocess.run", side_effect=subprocess.TimeoutExpired([], 1)),
         ):
             result = executor.run_interactive("use planning skill")

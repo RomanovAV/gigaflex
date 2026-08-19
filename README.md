@@ -1,8 +1,8 @@
-# gigalphex
+# gigaflex
 
 Python autonomous OpenSpec change and plan runner for GigaCode CLI.
 
-OpenSpec is the primary workflow: the change defines the contract, GigaLphex
+OpenSpec is the primary workflow: the change defines the contract, GigaFlex
 executes one `tasks.md` group at a time, and the completed change passes an
 isolated review and finalize gate before the owner archives it.
 
@@ -15,7 +15,7 @@ This is a small standalone rewrite of the useful ralphex core:
 - execute Superpowers `docs/superpowers/plans/*.md` implementation plans directly
 - run one task section per agent iteration
 - keep detailed agent output in progress logs and generate a live local dashboard
-- detect gigalphex completion signals
+- detect gigaflex completion signals
 - run review and a default finalize pass
 - run five specialist review agents in parallel in disposable detached
   worktrees, then synthesize/fix findings in the main worktree
@@ -36,16 +36,16 @@ gigacode --approval-mode=auto-edit --allowed-tools run_shell_command -p '<genera
 
 The default argument template is
 `--approval-mode=auto-edit --allowed-tools run_shell_command -p {prompt}`.
-`gigalphex` replaces `{prompt}` with the generated prompt before invoking
-GigaCode. If custom `gigacode_args` do not include `{prompt}`, GigaLphex adds
+`gigaflex` replaces `{prompt}` with the generated prompt before invoking
+GigaCode. If custom `gigacode_args` do not include `{prompt}`, GigaFlex adds
 `-p <generated prompt>` instead of sending a non-interactive prompt through
 stdin.
-For the actual subprocess invocation GigaLphex also enforces
+For the actual subprocess invocation GigaFlex also enforces
 `--output-format stream-json`. Assistant text is decoded into the detailed
 progress log, while lifecycle events update a concise local dashboard and final
 `result` events provide exact token and timing statistics.
 Custom non-interactive arguments cannot disable shell execution accidentally:
-GigaLphex normalizes every plan, task, review, synthesis, and finalize invocation
+GigaFlex normalizes every plan, task, review, synthesis, and finalize invocation
 to include `--approval-mode=auto-edit` and allow `run_shell_command`.
 GigaCode marks `-p/--prompt` as deprecated in favor of
 the positional query, but its variadic `query..` parser consumes options placed
@@ -61,8 +61,8 @@ Every plan execution and review run creates two live status files next to its
 progress log:
 
 ```text
-.gigalphex/progress/status-my-feature.json
-.gigalphex/progress/status-my-feature.html
+.gigaflex/progress/status-my-feature.json
+.gigaflex/progress/status-my-feature.html
 ```
 
 The CLI prints the absolute dashboard path when the run starts. Open the HTML
@@ -77,11 +77,11 @@ Run a standard local OpenSpec `spec-driven` change by passing its change
 directory:
 
 ```bash
-PYTHONPATH=python python3 -m gigalphex.cli \
+PYTHONPATH=python python3 -m gigaflex.cli \
   --openspec openspec/changes/add-dark-mode
 ```
 
-GigaLphex uses the change's `tasks.md` as the writable checklist and provides
+GigaFlex uses the change's `tasks.md` as the writable checklist and provides
 `proposal.md`, `design.md`, and all `specs/**/*.md` delta specs to each task
 agent as read-only context. Each `## N. ...` group in `tasks.md` is one agent
 iteration and one commit. Branch and progress names come from the change
@@ -94,7 +94,7 @@ files in context, and may inspect directly related code or tests, but they do
 not perform an unrelated repository-wide audit. Confirmed findings go through
 the scoped synthesis stage, followed by the default finalize pass.
 
-GigaLphex invokes the configured GigaCode CLI in the target workspace for every
+GigaFlex invokes the configured GigaCode CLI in the target workspace for every
 phase. Existing team skills, project rules, allowed tools, and GigaCode settings
 therefore remain available instead of being replaced by the runner.
 
@@ -104,7 +104,7 @@ after completing a section, the task agent adds a durable
 `- [x] N. <title>` marker below its heading so later runs can resume safely.
 
 Completing an OpenSpec run does not move `tasks.md` or archive the change.
-GigaLphex prints the corresponding `openspec archive <change-name>` command so
+GigaFlex prints the corresponding `openspec archive <change-name>` command so
 the spec merge and archive remain an explicit OpenSpec lifecycle action.
 Archived changes and changes without `tasks.md` are rejected.
 
@@ -120,14 +120,14 @@ prompt. Non-TTY sessions, including CI, automatically use quick mode.
 Install the bundled planning skill once:
 
 ```bash
-PYTHONPATH=python python3 -m gigalphex.cli --install-planning-skill
+PYTHONPATH=python python3 -m gigaflex.cli --install-planning-skill
 ```
 
 Superpowers implementation plans with `## Task N:` or `### Task N:` headings
 and step checkboxes can also be executed directly:
 
 ```bash
-PYTHONPATH=python python3 -m gigalphex.cli \
+PYTHONPATH=python python3 -m gigaflex.cli \
   docs/superpowers/plans/2026-07-01-demo.md
 ```
 
@@ -136,7 +136,7 @@ Superpowers design spec into a plan, or normalize a plan by removing
 Superpowers-specific execution mechanics:
 
 ```bash
-PYTHONPATH=python python3 -m gigalphex.cli --install-superpowers-converter-skill
+PYTHONPATH=python python3 -m gigaflex.cli --install-superpowers-converter-skill
 ```
 
 The default destination is `~/.gigacode/skills/planning/SKILL.md`. Existing
@@ -144,7 +144,7 @@ customized content is preserved; use `--force-skill-install` to replace it
 with the bundled version. For a GigaCode version using another skills
 directory, pass `--skill-dir PATH` or configure `gigacode_skills_dir`.
 The converter skill is installed as
-`~/.gigacode/skills/superpowers-to-gigalphex/SKILL.md` and follows the same
+`~/.gigacode/skills/superpowers-to-gigaflex/SKILL.md` and follows the same
 overwrite rules.
 
 Specialist and single-review sessions use `review_model`, keep the configured
@@ -173,12 +173,12 @@ Observed GigaCode constraints:
   `gigacode_interactive_args`.
 - GigaCode exposes administrative subcommands such as `mcp`, `extensions`,
   `auth`, `sandbox`, and `hooks`, but no task-execution subcommand.
-  GigaLphex therefore uses the default `gigacode [query..]` command and does
+  GigaFlex therefore uses the default `gigacode [query..]` command and does
   not assume a `gigacode task` command, JSON/REST API, or Python SDK.
 - Non-interactive runs fail if GigaCode asks for shell approval without the
   shell tool being explicitly allowed. Real logs and GigaCode help indicate that
   `--approval-mode=auto-edit` must be paired with
-  `--allowed-tools run_shell_command`; `gigalphex` includes both by default and
+  `--allowed-tools run_shell_command`; `gigaflex` includes both by default and
   still detects the warning if it appears.
 - There is no `IN_PROGRESS` signal. The dashboard therefore reports factual
   outer progress—plan checkboxes, phases, active processes, output activity,
@@ -189,7 +189,7 @@ Observed GigaCode constraints:
   contents are never included in these diagnostic lines. Parallel reviewers
   are identified as `review-agent:<name>`.
 - Every plan/review run writes a statistics report next to the progress log,
-  for example `.gigalphex/progress/stats-my-feature.json`. It includes each
+  for example `.gigaflex/progress/stats-my-feature.json`. It includes each
   GigaCode attempt, measured wall time, GigaCode/API durations when reported,
   model names, per-call tokens, aggregate tokens, total run wall time, and the
   sum of call durations. The CLI prints the absolute statistics path and records
@@ -201,8 +201,8 @@ Observed GigaCode constraints:
 Run from this directory:
 
 ```bash
-PYTHONPATH=python python3 -m gigalphex.cli --dry-run ../e2e/testdata/test-plan.md
-PYTHONPATH=python python3 -m gigalphex.cli docs/plans/my-feature.md
+PYTHONPATH=python python3 -m gigaflex.cli --dry-run ../e2e/testdata/test-plan.md
+PYTHONPATH=python python3 -m gigaflex.cli docs/plans/my-feature.md
 ```
 
 To enforce corporate Jira naming for a plan run, pass `--jira-task`. For
@@ -211,22 +211,22 @@ example, this switches or creates a branch like
 commit created during the run:
 
 ```bash
-PYTHONPATH=python python3 -m gigalphex.cli docs/plans/my-feature.md \
+PYTHONPATH=python python3 -m gigaflex.cli docs/plans/my-feature.md \
   --jira-task PROJ-123 \
   --allow-dirty
 ```
 
-Diagnose differences between direct GigaCode and GigaLphex execution by running
+Diagnose differences between direct GigaCode and GigaFlex execution by running
 this Python module from the affected project directory:
 
 ```bash
-PYTHONPATH=/path/to/gigalphex/python python3 -m gigalphex.diagnose
+PYTHONPATH=/path/to/gigaflex/python python3 -m gigaflex.diagnose
 ```
 
 To reproduce one exact task prompt once:
 
 ```bash
-PYTHONPATH=/path/to/gigalphex/python python3 -m gigalphex.diagnose \
+PYTHONPATH=/path/to/gigaflex/python python3 -m gigaflex.diagnose \
   --plan docs/plans/my-feature.md
 ```
 
@@ -241,37 +241,37 @@ Run a plan in a separate git worktree, close to ralphex `--worktree`
 behavior:
 
 ```bash
-PYTHONPATH=python python3 -m gigalphex.cli --worktree docs/plans/my-feature.md
-PYTHONPATH=python python3 -m gigalphex.cli --worktree --branch=my-feature docs/plans/tasks.md
+PYTHONPATH=python python3 -m gigaflex.cli --worktree docs/plans/my-feature.md
+PYTHONPATH=python python3 -m gigaflex.cli --worktree --branch=my-feature docs/plans/tasks.md
 ```
 
 Initialize local project config:
 
 ```bash
-PYTHONPATH=python python3 -m gigalphex.cli --init
+PYTHONPATH=python python3 -m gigaflex.cli --init
 ```
 
 If you skip `--init`, the first real plan creation or plan execution initializes
-the local `.gigalphex/config` automatically. Dry runs and review-only runs do
+the local `.gigaflex/config` automatically. Dry runs and review-only runs do
 not auto-create it. Local prompt templates are not created automatically,
 because their presence overrides the global prompt with the same filename.
 Initialization also creates or updates `.gitignore` with `.DS_Store` and
-`.gigalphex/progress/` and `.gigalphex/worktrees/`, so local runtime artifacts
+`.gigaflex/progress/` and `.gigaflex/worktrees/`, so local runtime artifacts
 stay out of normal commits.
 
 Create editable project-specific prompt overrides only when needed:
 
 ```bash
-PYTHONPATH=python python3 -m gigalphex.cli --init-prompts
+PYTHONPATH=python python3 -m gigaflex.cli --init-prompts
 ```
 
 Initialize git automatically when creating or running a plan in a fresh folder:
 
 ```bash
-PYTHONPATH=python python3 -m gigalphex.cli --plan "add user authentication" --init-git
+PYTHONPATH=python python3 -m gigaflex.cli --plan "add user authentication" --init-git
 ```
 
-Without `--init-git`, `gigalphex` does not create a git repository for you. Plan
+Without `--init-git`, `gigaflex` does not create a git repository for you. Plan
 creation still works, but the created plan is left uncommitted outside git.
 When `--init-git` creates a new repository, it commits the current files first
 as `chore: initialize repository`, then continues with plan creation or
@@ -280,19 +280,19 @@ execution.
 Create a new executable plan:
 
 ```bash
-PYTHONPATH=python python3 -m gigalphex.cli --plan "add user authentication"
+PYTHONPATH=python python3 -m gigaflex.cli --plan "add user authentication"
 ```
 
 The default interactive mode requires the GigaCode `planning` skill. The skill
 creates the requested file under `docs/plans/`; after the GigaCode session
-exits, `gigalphex` verifies the file and commits it when configured to do so.
+exits, `gigaflex` verifies the file and commits it when configured to do so.
 If the installed GigaCode version needs different interactive CLI arguments,
 set `gigacode_interactive_args` while keeping a `{prompt}` placeholder.
 
 Create a plan without the skill or from automation:
 
 ```bash
-PYTHONPATH=python python3 -m gigalphex.cli --plan "add user authentication" --quick
+PYTHONPATH=python python3 -m gigaflex.cli --plan "add user authentication" --quick
 ```
 
 Generated plans are requested entirely in the same language as the `--plan`
@@ -304,24 +304,24 @@ the current directory is inside a git repository. Use `--no-commit-plan` or
 `commit_plan_on_creation = false` to leave the plan uncommitted.
 When a full run finishes and moves the plan into `docs/plans/completed/`, that
 move is committed as `docs: complete plan <name>`.
-With `--jira-task PROJ-123`, these GigaLphex-created commits become
+With `--jira-task PROJ-123`, these GigaFlex-created commits become
 `PROJ-123 docs: ...`, and plan creation happens on
 `feature/PROJ-123-<plan-description>`.
 
 Run review with a different GigaCode model:
 
 ```bash
-PYTHONPATH=python python3 -m gigalphex.cli --review --review-model <model-name>
-PYTHONPATH=python python3 -m gigalphex.cli docs/plans/my-feature.md --review-model <model-name>
+PYTHONPATH=python python3 -m gigaflex.cli --review --review-model <model-name>
+PYTHONPATH=python python3 -m gigaflex.cli docs/plans/my-feature.md --review-model <model-name>
 ```
 
 Review the current `HEAD` against an explicit branch or other Git ref:
 
 ```bash
-PYTHONPATH=python python3 -m gigalphex.cli --review --base-ref develop
+PYTHONPATH=python python3 -m gigaflex.cli --review --base-ref develop
 ```
 
-For a plan run, GigaLphex normally captures the branch and exact `HEAD` commit
+For a plan run, GigaFlex normally captures the branch and exact `HEAD` commit
 that are checked out before it creates or switches to the execution branch.
 That immutable commit becomes the review base. The branch label and commit are
 stored in local Git config for the execution branch, so a later `--review`
@@ -329,7 +329,7 @@ restores the same base even if the original branch has advanced. `--base-ref`
 overrides this selection for both plan runs and standalone review runs; the
 resolved commit is then stored for future reviews of that execution branch.
 If an execution branch predates this metadata and is already checked out, pass
-`--base-ref` once; GigaLphex refuses to guess and use the feature branch itself.
+`--base-ref` once; GigaFlex refuses to guess and use the feature branch itself.
 
 Run tests:
 
@@ -400,7 +400,7 @@ Review behavior:
   marker pending, automatically recheck the unchanged task boundary and retry
   it up to `retry_count` times with an explicit corrective prompt; unsafe
   changes to later tasks or read-only OpenSpec context are never retried
-- before retrying a failed task process, GigaLphex restores the plan snapshot
+- before retrying a failed task process, GigaFlex restores the plan snapshot
   from the start of that iteration so the retry selects the same task; partial
   code changes remain available for the next attempt
 - if a task session times out after a clean task commit, the completed
@@ -416,7 +416,7 @@ Review behavior:
 Configure GigaCode:
 
 ```ini
-[gigalphex]
+[gigaflex]
 gigacode_command = gigacode
 gigacode_args = --approval-mode=auto-edit --allowed-tools run_shell_command -p {prompt}
 gigacode_interactive_args = --prompt-interactive {prompt} --approval-mode=auto-edit
@@ -426,7 +426,7 @@ task_model =
 review_model =
 finalize_model =
 default_branch =
-prompts_dir = .gigalphex/prompts
+prompts_dir = .gigaflex/prompts
 session_timeout = 1800
 idle_timeout = 900
 retry_count = 1
@@ -450,16 +450,16 @@ explicit review base is required for every run.
 Configuration loading priority, from lowest to highest:
 
 1. embedded defaults
-2. global config at `~/.config/gigalphex/config`
-3. project config at `.gigalphex/config`
+2. global config at `~/.config/gigaflex/config`
+3. project config at `.gigaflex/config`
 4. a file passed with `--config`
-5. supported `GIGALPHEX_*` environment variables
+5. supported `GIGAFLEX_*` environment variables
 6. CLI arguments
 
-The CLI creates the global directory `~/.config/gigalphex/`, a commented
-`~/.config/gigalphex/config` template, and all seven prompt templates under
-`~/.config/gigalphex/prompts/` automatically. If global files cannot be
-created, it creates `.gigalphex/config` and `.gigalphex/prompts/` in the
+The CLI creates the global directory `~/.config/gigaflex/`, a commented
+`~/.config/gigaflex/config` template, and all seven prompt templates under
+`~/.config/gigaflex/prompts/` automatically. If global files cannot be
+created, it creates `.gigaflex/config` and `.gigaflex/prompts/` in the
 current project instead.
 Existing global config files and customized prompts are never overwritten.
 Global prompts that still match an earlier installed default are upgraded to
@@ -476,7 +476,7 @@ Git behavior:
   with `TASK `; adding a missing prefix rewrites the new local commit objects,
   so their SHAs change before the run continues
 - `--worktree` runs full and tasks-only plan execution in
-  `.gigalphex/worktrees/<branch>` instead of switching the current checkout
+  `.gigaflex/worktrees/<branch>` instead of switching the current checkout
 - `--branch` overrides the branch name for normal branch switching and
   worktree runs
 - review-only mode does not switch branches
@@ -495,18 +495,18 @@ Git behavior:
 Prompt customization:
 
 - global editable defaults are created automatically in
-  `~/.config/gigalphex/prompts/`, with local files used as a fallback
+  `~/.config/gigaflex/prompts/`, with local files used as a fallback
 - `--init-prompts` creates project-specific overrides in
-  `.gigalphex/prompts/`
+  `.gigaflex/prompts/`
 - both directories use `make_plan.txt`, `plan_skill.txt`, `task.txt`, `review.txt`,
   `review_agent.txt`, `review_synthesis.txt`, and `finalize.txt`
-- loading priority is local prompts directory, then `~/.config/gigalphex/prompts`, then embedded defaults
+- loading priority is local prompts directory, then `~/.config/gigaflex/prompts`, then embedded defaults
 
 Bundled skills:
 
 - `--install-planning-skill` installs the bundled skill globally
 - `--install-superpowers-converter-skill` installs the bundled
-  `superpowers-to-gigalphex` skill for turning `docs/superpowers/specs/` into
+  `superpowers-to-gigaflex` skill for turning `docs/superpowers/specs/` into
   executable plans or normalizing `docs/superpowers/plans/` into `docs/plans/`;
   implementation plans can also be executed directly without conversion
 - `--skill-dir PATH` overrides the configured GigaCode skills directory
@@ -518,7 +518,7 @@ After installing the converter skill, use it from an interactive GigaCode
 session, for example:
 
 ```text
-Use the superpowers-to-gigalphex skill to convert docs/superpowers/specs/2026-07-01--demo.md into docs/plans/demo.md.
+Use the superpowers-to-gigaflex skill to convert docs/superpowers/specs/2026-07-01--demo.md into docs/plans/demo.md.
 ```
 
 Model selection:

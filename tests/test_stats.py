@@ -6,7 +6,7 @@ import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "python"))
 
-from gigalphex.stats import InvocationStat, RunStatistics, TokenUsage, statistics_path
+from gigaflex.stats import InvocationStat, RunStatistics, TokenUsage, statistics_path
 
 
 class RunStatisticsTest(unittest.TestCase):
@@ -81,8 +81,8 @@ class RunStatisticsTest(unittest.TestCase):
 
     def test_statistics_path_matches_progress_file(self) -> None:
         self.assertEqual(
-            Path(".gigalphex/progress/stats-demo.json"),
-            statistics_path(Path(".gigalphex/progress/progress-demo.txt")),
+            Path(".gigaflex/progress/stats-demo.json"),
+            statistics_path(Path(".gigaflex/progress/progress-demo.txt")),
         )
 
 

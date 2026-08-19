@@ -6,8 +6,8 @@ from pathlib import Path
 
 PLANNING_SKILL_NAME = "planning"
 PLANNING_SKILL_RESOURCE = "assets/planning/SKILL.md"
-SUPERPOWERS_CONVERTER_SKILL_NAME = "superpowers-to-gigalphex"
-SUPERPOWERS_CONVERTER_SKILL_RESOURCE = "assets/superpowers-to-gigalphex/SKILL.md"
+SUPERPOWERS_CONVERTER_SKILL_NAME = "superpowers-to-gigaflex"
+SUPERPOWERS_CONVERTER_SKILL_RESOURCE = "assets/superpowers-to-gigaflex/SKILL.md"
 
 
 def _skill_path(skills_dir: Path, name: str) -> Path:
@@ -15,7 +15,7 @@ def _skill_path(skills_dir: Path, name: str) -> Path:
 
 
 def _resource_text(resource_path: str) -> str:
-    resource = resources.files("gigalphex")
+    resource = resources.files("gigaflex")
     for part in resource_path.split("/"):
         resource = resource.joinpath(part)
     return resource.read_text(encoding="utf-8")

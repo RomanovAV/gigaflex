@@ -7,13 +7,13 @@ import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "python"))
 
-from gigalphex.dashboard import ProgressDashboard
-from gigalphex.executor import ExecResult, GigaCodeExecutor
-from gigalphex.git import GitService, ReviewWorktreeManager
-from gigalphex.progress import ProgressLog
-from gigalphex.prompts import REVIEW_AGENTS
-from gigalphex.runner import RunOptions, Runner
-from gigalphex.signals import FINALIZE_DONE, REVIEW_DONE
+from gigaflex.dashboard import ProgressDashboard
+from gigaflex.executor import ExecResult, GigaCodeExecutor
+from gigaflex.git import GitService, ReviewWorktreeManager
+from gigaflex.progress import ProgressLog
+from gigaflex.prompts import REVIEW_AGENTS
+from gigaflex.runner import RunOptions, Runner
+from gigaflex.signals import FINALIZE_DONE, REVIEW_DONE
 
 
 class FakeExecutor:
@@ -1745,7 +1745,7 @@ class RunnerTest(unittest.TestCase):
 
 class FailureDescriptionTest(unittest.TestCase):
     def test_describes_timeout_and_attempts(self) -> None:
-        from gigalphex.runner import describe_failure
+        from gigaflex.runner import describe_failure
 
         message = describe_failure(
             "gigacode review agent quality",
@@ -1755,7 +1755,7 @@ class FailureDescriptionTest(unittest.TestCase):
         self.assertEqual("gigacode review agent quality timed out after 3 attempts", message)
 
     def test_describes_idle_timeout(self) -> None:
-        from gigalphex.runner import describe_failure
+        from gigaflex.runner import describe_failure
 
         message = describe_failure(
             "gigacode task session",
@@ -1765,7 +1765,7 @@ class FailureDescriptionTest(unittest.TestCase):
         self.assertEqual("gigacode task session idle timed out", message)
 
     def test_describes_rate_limit(self) -> None:
-        from gigalphex.runner import describe_failure
+        from gigaflex.runner import describe_failure
 
         message = describe_failure(
             "gigacode task session",
@@ -1775,7 +1775,7 @@ class FailureDescriptionTest(unittest.TestCase):
         self.assertEqual("gigacode task session rate limited", message)
 
     def test_describes_transient_error(self) -> None:
-        from gigalphex.runner import describe_failure
+        from gigaflex.runner import describe_failure
 
         message = describe_failure(
             "gigacode task session",
@@ -1785,7 +1785,7 @@ class FailureDescriptionTest(unittest.TestCase):
         self.assertEqual("gigacode task session hit a transient error", message)
 
     def test_describes_api_error_even_when_process_exits_zero(self) -> None:
-        from gigalphex.runner import describe_failure
+        from gigaflex.runner import describe_failure
 
         message = describe_failure(
             "gigacode review agent quality",
@@ -1802,7 +1802,7 @@ class FailureDescriptionTest(unittest.TestCase):
         )
 
     def test_describes_noninteractive_approval_failure(self) -> None:
-        from gigalphex.runner import describe_failure
+        from gigaflex.runner import describe_failure
 
         message = describe_failure(
             "gigacode task session",
@@ -1827,7 +1827,7 @@ class temporary_repo:
         self.repo = Path(self.tmp.name)
         git(self.repo, "init")
         git(self.repo, "config", "user.email", "test@example.com")
-        git(self.repo, "config", "user.name", "GigaLphex Test")
+        git(self.repo, "config", "user.name", "GigaFlex Test")
         self.plan = self.repo / "plan.md"
         self.plan.write_text(
             """# Plan: Demo

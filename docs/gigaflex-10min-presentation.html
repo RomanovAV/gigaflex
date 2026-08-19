@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>gigalphex - 10 минут о функциональности</title>
+  <title>gigaflex - 10 минут о функциональности</title>
   <style>
     :root {
       color-scheme: dark;
@@ -1172,7 +1172,7 @@
   </style>
 </head>
 <body>
-  <main class="deck" aria-label="Презентация gigalphex">
+  <main class="deck" aria-label="Презентация gigaflex">
     <div class="topbar" aria-hidden="true">
       <div class="window-dots">
         <span class="dot red"></span>
@@ -1180,7 +1180,7 @@
         <span class="dot green"></span>
       </div>
       <div class="crumbs">
-        <span>gigalphex</span>
+        <span>gigaflex</span>
         <span>/</span>
         <strong>10-minute-overview.html</strong>
       </div>
@@ -1191,7 +1191,7 @@
       <div class="slide-frame">
         <div>
           <p class="kicker">10 минут - функциональность проекта</p>
-          <h1>gigalphex: управляемый автономный цикл поверх <span class="headline-emphasis">GigaCode CLI</span></h1>
+          <h1>gigaflex: управляемый автономный цикл поверх <span class="headline-emphasis">GigaCode CLI</span></h1>
           <p class="lead">OpenSpec change, Superpowers plan или обычный markdown превращаются в один воспроизводимый процесс: задача, проверка, коммит, review и финализация — с живым статусом в браузере.</p>
           <div class="talk-time">0:00 - 0:45</div>
           <div class="tag-line">
@@ -1218,7 +1218,7 @@
               <div class="code-line"><span class="token-key">if</span> all_tasks_done:</div>
               <div class="code-line">&nbsp;&nbsp;<span class="token-fn">review_parallel</span>(agents=5)</div>
               <div class="code-line">&nbsp;&nbsp;<span class="token-fn">synthesize</span>(findings)</div>
-              <div class="code-line"><span class="token-ok"><<<GIGALPHEX:FINALIZE_DONE>>></span></div>
+              <div class="code-line"><span class="token-ok"><<<GIGAFLEX:FINALIZE_DONE>>></span></div>
             </div>
           </div>
         </div>
@@ -1230,7 +1230,7 @@
         <div>
           <p class="kicker">Проблема, которую закрывает проект</p>
           <h2>Агент умеет писать код. Команде нужен <span class="accent-green">контур исполнения</span>.</h2>
-          <p class="lead">gigalphex добавляет поверх GigaCode дисциплину рабочего процесса: что именно делаем, когда считаем готовым, где смотреть след выполнения и как не потерять контроль над git-состоянием.</p>
+          <p class="lead">gigaflex добавляет поверх GigaCode дисциплину рабочего процесса: что именно делаем, когда считаем готовым, где смотреть след выполнения и как не потерять контроль над git-состоянием.</p>
           <ul class="bullets">
             <li>Большая задача дробится на независимые markdown-секции.</li>
             <li>Каждая итерация привязана к одному выбранному разделу плана.</li>
@@ -1251,7 +1251,7 @@
                 <p>Один длинный prompt, неочевидная граница готовности, трудно понять, что уже проверено и где агент остановился.</p>
               </div>
               <div class="matrix-cell">
-                <h3 class="accent-green">С gigalphex</h3>
+                <h3 class="accent-green">С gigaflex</h3>
                 <p>План является контрактом, progress log является следом, а git-коммиты фиксируют атомарные результаты.</p>
               </div>
               <div class="matrix-cell">
@@ -1275,7 +1275,7 @@
           <h2>OpenSpec, Superpowers и обычный план входят в один и тот же пайплайн</h2>
           <p class="lead">Формат входа не меняет контракт выполнения: выбрать одну задачу, проверить результат, зафиксировать его в Git и пройти quality gate.</p>
         </div>
-        <div class="source-flow" aria-label="Источники задач gigalphex">
+        <div class="source-flow" aria-label="Источники задач gigaflex">
           <article class="source-card">
             <span class="source-arrow">O</span>
             <strong>OpenSpec change</strong>
@@ -1301,7 +1301,7 @@
       <div class="slide-frame">
         <div>
           <p class="kicker">OpenSpec execution</p>
-          <h2>Change остаётся источником истины, а GigaLphex исполняет его по группам</h2>
+          <h2>Change остаётся источником истины, а GigaFlex исполняет его по группам</h2>
           <p class="lead">`--openspec` принимает директорию change, а не отдельный файл. Изменяемым чеклистом остаётся только `tasks.md`; остальные артефакты защищены как read-only контекст.</p>
           <ul class="bullets">
             <li>Каждая группа `## N. ...` — отдельная агентская итерация и коммит.</li>
@@ -1351,7 +1351,7 @@
         <div>
           <p class="kicker">Task execution</p>
           <h2>Одна итерация — один контролируемый агентский запуск</h2>
-          <p class="lead">gigalphex задаёт жёсткий контракт вокруг запуска: scope, validation, commit и чистое рабочее дерево. Если агент вернулся “успешно”, но не закрыл контракт, он получает корректирующий retry.</p>
+          <p class="lead">gigaflex задаёт жёсткий контракт вокруг запуска: scope, validation, commit и чистое рабочее дерево. Если агент вернулся “успешно”, но не закрыл контракт, он получает корректирующий retry.</p>
           <div class="feature-grid">
             <article class="feature-tile">
               <div class="feature-icon">S</div>
@@ -1388,18 +1388,18 @@
         </div>
         <div class="terminal-panel">
           <div class="terminal-title">
-            <span>.gigalphex/progress/progress-feature.txt</span>
+            <span>.gigaflex/progress/progress-feature.txt</span>
             <span class="accent-green">stream-json</span>
           </div>
           <div class="terminal-lines">
-            <div><span class="terminal-muted">$</span> gigalphex docs/plans/feature.md</div>
+            <div><span class="terminal-muted">$</span> gigaflex docs/plans/feature.md</div>
             <div>section: task iteration 2: implement behavior</div>
             <div>session=task event=prepared prompt_chars=8120</div>
             <div>session=task event=first_output pid=48213</div>
             <div><code>feat: implement selected task</code></div>
             <div>session=task event=finished returncode=0</div>
-            <div><span class="accent-cyan"><<<GIGALPHEX:ALL_TASKS_DONE>>></span></div>
-            <div class="terminal-muted">statistics: .gigalphex/progress/stats-feature.json</div>
+            <div><span class="accent-cyan"><<<GIGAFLEX:ALL_TASKS_DONE>>></span></div>
+            <div class="terminal-muted">statistics: .gigaflex/progress/stats-feature.json</div>
           </div>
         </div>
       </div>
@@ -1419,10 +1419,10 @@
           </ul>
           <div class="talk-time">4:40 - 5:45</div>
         </div>
-        <div class="dashboard-preview" aria-label="Пример live dashboard GigaLphex">
+        <div class="dashboard-preview" aria-label="Пример live dashboard GigaFlex">
           <div class="dashboard-head">
             <div>
-              <div class="dashboard-eyebrow">GigaLphex progress</div>
+              <div class="dashboard-eyebrow">GigaFlex progress</div>
               <h3>Add search filters</h3>
               <p>Working on task 2: Implement filters</p>
             </div>
@@ -1501,7 +1501,7 @@
             </div>
             <div class="mini-panel">
               <h3>Worktree mode</h3>
-              <p>`--worktree` запускает выполнение в `.gigalphex/worktrees/&lt;branch&gt;`, не дергая текущий checkout.</p>
+              <p>`--worktree` запускает выполнение в `.gigaflex/worktrees/&lt;branch&gt;`, не дергая текущий checkout.</p>
             </div>
             <div class="mini-panel">
               <h3>Jira policy</h3>
@@ -1521,17 +1521,17 @@
           </div>
           <div class="terminal-lines">
             <div><span class="terminal-muted"># подготовка</span></div>
-            <div>gigalphex --init</div>
-            <div>gigalphex --install-planning-skill</div>
+            <div>gigaflex --init</div>
+            <div>gigaflex --install-planning-skill</div>
             <br>
             <div><span class="terminal-muted"># план</span></div>
-            <div>gigalphex --plan "добавить health check endpoint"</div>
+            <div>gigaflex --plan "добавить health check endpoint"</div>
             <br>
             <div><span class="terminal-muted"># исполнение</span></div>
-            <div>gigalphex docs/plans/health-check.md --jira-task PROJ-123</div>
+            <div>gigaflex docs/plans/health-check.md --jira-task PROJ-123</div>
             <br>
             <div><span class="terminal-muted"># отдельная проверка</span></div>
-            <div>gigalphex --review --base-ref develop</div>
+            <div>gigaflex --review --base-ref develop</div>
           </div>
         </div>
       </div>
@@ -1541,24 +1541,24 @@
       <div class="slide-frame">
         <div>
           <p class="kicker">Настраиваемая оркестрация</p>
-          <h2>GigaLphex управляет циклом, а GigaCode остаётся средой исполнения</h2>
+          <h2>GigaFlex управляет циклом, а GigaCode остаётся средой исполнения</h2>
           <p class="lead">Никакого отдельного SDK: контрактом остаётся GigaCode CLI. Auth, sandbox, tools, workspace и custom skills продолжают работать внутри уже настроенной среды.</p>
           <ul class="bullets">
-            <li>Приоритет: embedded defaults, global config, project config, explicit config, `GIGALPHEX_*`, CLI.</li>
+            <li>Приоритет: embedded defaults, global config, project config, explicit config, `GIGAFLEX_*`, CLI.</li>
             <li>Для фаз можно выбрать разные модели: plan, task, review, finalize.</li>
-            <li>Prompt overrides лежат глобально или локально в `.gigalphex/prompts/`.</li>
+            <li>Prompt overrides лежат глобально или локально в `.gigaflex/prompts/`.</li>
             <li>`--gigacode-arg` прокидывает корпоративные флаги GigaCode, включая include-directories.</li>
           </ul>
           <div class="talk-time">7:50 - 9:05</div>
         </div>
         <div class="ide-panel">
           <div class="ide-tabs">
-            <div class="tab active"><span class="file-dot"></span>.gigalphex/config</div>
+            <div class="tab active"><span class="file-dot"></span>.gigaflex/config</div>
           </div>
           <div class="editor">
             <div class="line-numbers">1<br>2<br>3<br>4<br>5<br>6<br>7<br>8<br>9<br>10</div>
             <div class="code-lines">
-              <div class="code-line"><span class="token-key">[gigalphex]</span></div>
+              <div class="code-line"><span class="token-key">[gigaflex]</span></div>
               <div class="code-line">gigacode_command = <span class="token-str">gigacode</span></div>
               <div class="code-line">gigacode_args = <span class="token-str">auto-edit + shell</span></div>
               <div class="code-line">task_model = <span class="token-str">&lt;model&gt;</span></div>
@@ -1579,7 +1579,7 @@
         <div>
           <p class="kicker">Итог</p>
           <h2>Главная идея: агентская разработка становится <span class="accent-cyan">проверяемым процессом</span></h2>
-          <p class="lead">gigalphex даёт продуктовый слой вокруг GigaCode: OpenSpec или план как контракт, live dashboard как наблюдаемость, Git как журнал решений, review-агенты как quality gate.</p>
+          <p class="lead">gigaflex даёт продуктовый слой вокруг GigaCode: OpenSpec или план как контракт, live dashboard как наблюдаемость, Git как журнал решений, review-агенты как quality gate.</p>
           <ul class="bullets">
             <li>Для разработчика: меньше ручной координации и больше прозрачности.</li>
             <li>Для команды: повторяемый сценарий запуска на реальных задачах.</li>
@@ -1595,13 +1595,13 @@
           <div class="qr-grid">
             <article class="qr-card">
               <h3>Репозиторий</h3>
-              <img class="qr-code" src="assets/gigalphex-repo-qr.png" alt="QR: https://github.com/RomanovAV/gigalphex">
-              <a class="qr-link" href="https://github.com/RomanovAV/gigalphex" target="_blank" rel="noreferrer">github.com/RomanovAV/gigalphex</a>
+              <img class="qr-code" src="assets/gigaflex-repo-qr.png" alt="QR: https://github.com/RomanovAV/gigaflex">
+              <a class="qr-link" href="https://github.com/RomanovAV/gigaflex" target="_blank" rel="noreferrer">github.com/RomanovAV/gigaflex</a>
             </article>
             <article class="qr-card">
               <h3>Чат</h3>
-              <img class="qr-code" src="assets/gigalphex-chat-qr.png" alt="QR: https://sberchat.sberbank.ru/@gigalphex">
-              <a class="qr-link" href="https://sberchat.sberbank.ru/@gigalphex" target="_blank" rel="noreferrer">sberchat.sberbank.ru/@gigalphex</a>
+              <img class="qr-code" src="assets/gigaflex-chat-qr.png" alt="QR: https://sberchat.sberbank.ru/@gigaflex">
+              <a class="qr-link" href="https://sberchat.sberbank.ru/@gigaflex" target="_blank" rel="noreferrer">sberchat.sberbank.ru/@gigaflex</a>
             </article>
           </div>
         </div>
@@ -1665,7 +1665,7 @@
       prev.disabled = index === 0;
       next.disabled = index === slides.length - 1;
       const title = slides[index].dataset.title || `slide-${index + 1}`;
-      document.title = `gigalphex - ${title}`;
+      document.title = `gigaflex - ${title}`;
       if (updateHash) {
         history.replaceState(null, "", `#${index + 1}`);
       }

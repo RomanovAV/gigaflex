@@ -5,7 +5,7 @@ import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "python"))
 
-from gigalphex.plan import (
+from gigaflex.plan import (
     file_has_uncompleted_checkbox,
     parse_plan,
     resolve_openspec_change,

@@ -1,4 +1,4 @@
-[gigalphex]
+[gigaflex]
 # gigacode_command = gigacode
 # gigacode_args = --approval-mode=auto-edit --allowed-tools run_shell_command -p {prompt}
 # gigacode_interactive_args = --prompt-interactive {prompt} --approval-mode=auto-edit
@@ -8,8 +8,8 @@
 # review_model =
 # finalize_model =
 # plans_dir = docs/plans
-# progress_dir = .gigalphex/progress
-# prompts_dir = .gigalphex/prompts
+# progress_dir = .gigaflex/progress
+# prompts_dir = .gigaflex/prompts
 # default_branch =
 # max_iterations = 50
 # review_iterations = 5

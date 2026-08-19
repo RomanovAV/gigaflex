@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Интерактивный запуск OpenSpec change через GigaLphex с автономным выполнением, review и finalize.">
-  <title>Как попробовать GigaLphex</title>
+  <meta name="description" content="Интерактивный запуск OpenSpec change через GigaFlex с автономным выполнением, review и finalize.">
+  <title>Как попробовать GigaFlex</title>
   <style>
     :root {
       --ink: #18251d;
@@ -624,8 +624,8 @@
 <body>
   <div class="shell">
     <header>
-      <a class="brand" href="#top"><span class="brand-mark">G</span>GigaLphex</a>
-      <a class="repo-link" href="https://github.com/RomanovAV/gigalphex" target="_blank" rel="noreferrer">Репозиторий ↗</a>
+      <a class="brand" href="#top"><span class="brand-mark">G</span>GigaFlex</a>
+      <a class="repo-link" href="https://github.com/RomanovAV/gigaflex" target="_blank" rel="noreferrer">Репозиторий ↗</a>
     </header>
 
     <section class="hero" id="top">
@@ -633,7 +633,7 @@
         <p class="kicker">OpenSpec → автономное исполнение</p>
         <h1>Запустите OpenSpec change<br><span>за четыре шага.</span></h1>
       </div>
-      <p class="hero-copy">Спецификация остаётся контрактом, а GigaLphex ведёт задачи, коммиты, review и finalize.</p>
+      <p class="hero-copy">Спецификация остаётся контрактом, а GigaFlex ведёт задачи, коммиты, review и finalize.</p>
     </section>
 
     <nav class="stepper" aria-label="Шаги настройки">
@@ -664,15 +664,15 @@
               </label>
             </div>
 
-            <a class="download-card" href="https://github.com/RomanovAV/gigalphex/archive/refs/heads/main.zip" target="_blank" rel="noreferrer">
-              <span>GigaLphex ещё не скачан?</span>
+            <a class="download-card" href="https://github.com/RomanovAV/gigaflex/archive/refs/heads/main.zip" target="_blank" rel="noreferrer">
+              <span>GigaFlex ещё не скачан?</span>
               <strong>Скачать с GitHub ↓</strong>
             </a>
 
             <div class="fields two">
               <label>
-                <span>Где находится GigaLphex</span>
-                <input id="runnerRoot" value="/path/to/gigalphex" spellcheck="false">
+                <span>Где находится GigaFlex</span>
+                <input id="runnerRoot" value="/path/to/gigaflex" spellcheck="false">
               </label>
               <label>
                 <span>Какой проект нужно изменить</span>
@@ -707,7 +707,7 @@
                 <span class="route-number">03</span>
                 <small>Есть только формулировка задачи</small>
                 <strong>Обычный план</strong>
-                <p>Попросить GigaLphex создать план, проверить его и запустить.</p>
+                <p>Попросить GigaFlex создать план, проверить его и запустить.</p>
                 <code>docs/plans/…</code>
               </button>
             </div>
@@ -732,14 +732,14 @@
             <div class="heading">
               <p class="eyebrow">Шаг 03</p>
               <h2>Используйте общую конфигурацию</h2>
-              <span>Команда запуска останется короткой: GigaLphex сам прочитает модели и параметры выполнения из config.</span>
+              <span>Команда запуска останется короткой: GigaFlex сам прочитает модели и параметры выполнения из config.</span>
             </div>
 
             <div class="settings">
               <div class="settings-title"><strong>Откуда берутся настройки</strong><small>Флаги в каждой команде не нужны</small></div>
               <div class="after">
-                <span><b>01 ·</b> ~/.config/gigalphex/config — общие настройки</span>
-                <span><b>02 ·</b> .gigalphex/config — настройки конкретного проекта</span>
+                <span><b>01 ·</b> ~/.config/gigaflex/config — общие настройки</span>
+                <span><b>02 ·</b> .gigaflex/config — настройки конкретного проекта</span>
                 <span><b>03 ·</b> проектный config при необходимости переопределяет общий</span>
               </div>
             </div>
@@ -747,8 +747,8 @@
             <div class="settings">
               <div class="settings-title"><strong>Для первого запуска</strong><small>Дополнительная настройка не обязательна</small></div>
               <div class="after">
-                <span>Команда <b>--init</b> подготовит .gigalphex/config.</span>
-                <span>Если config уже существует, GigaLphex использует его без изменений.</span>
+                <span>Команда <b>--init</b> подготовит .gigaflex/config.</span>
+                <span>Если config уже существует, GigaFlex использует его без изменений.</span>
               </div>
             </div>
 
@@ -779,7 +779,7 @@
 
             <div class="after">
               <b>После запуска проверьте:</b>
-              <span>01 · dashboard, JSON status, transcript и stats в .gigalphex/progress/</span>
+              <span>01 · dashboard, JSON status, transcript и stats в .gigaflex/progress/</span>
               <span>02 · общий diff change от сохранённого base commit до HEAD</span>
               <span>03 · review пяти специалистов и успешный finalize</span>
               <span>04 · затем выполните явный openspec archive &lt;change-name&gt;</span>
@@ -805,7 +805,7 @@
     </main>
 
     <footer>
-      <strong>GigaLphex</strong>
+      <strong>GigaFlex</strong>
       <span>Специфицируйте. Выполняйте. Проверяйте.</span>
       <a href="#top">Наверх ↑</a>
     </footer>
@@ -825,8 +825,8 @@
       const quote = (text) => "'" + text.replaceAll("'", "'\"'\"'") + "'";
 
       function buildOutput() {
-        const runner = value("runnerRoot", "/path/to/gigalphex").replace(/\/+$/, "");
-        const cli = "PYTHONPATH=" + quote(runner + "/python") + " python3 -m gigalphex.cli";
+        const runner = value("runnerRoot", "/path/to/gigaflex").replace(/\/+$/, "");
+        const cli = "PYTHONPATH=" + quote(runner + "/python") + " python3 -m gigaflex.cli";
 
         const commands = [
           "# Перейдите в проект",
@@ -858,7 +858,7 @@
             "",
             "# Откройте GigaCode и попросите конвертировать spec",
             "gigacode",
-            "# Use the superpowers-to-gigalphex skill to convert " + source + " into docs/plans/CONVERTED_PLAN.md.",
+            "# Use the superpowers-to-gigaflex skill to convert " + source + " into docs/plans/CONVERTED_PLAN.md.",
             "",
             "# Затем выполните созданный план",
             cli + " " + quote("docs/plans/CONVERTED_PLAN.md")

@@ -15,7 +15,7 @@ If confirmed issues exist:
 - stop without a completion signal
 
 If no confirmed issues exist, output exactly this as the final non-empty line:
-<<<GIGALPHEX:REVIEW_DONE>>>
+<<<GIGAFLEX:REVIEW_DONE>>>
 
 Reject false positives explicitly and briefly.
 Progress log: {progress_file}

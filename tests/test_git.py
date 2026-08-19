@@ -5,7 +5,7 @@ import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "python"))
 
-from gigalphex.git import (
+from gigaflex.git import (
     BranchBaseline,
     GitService,
     ReviewWorktreeManager,
@@ -20,7 +20,7 @@ class GitServiceTest(unittest.TestCase):
             git = GitService(repo)
             git.run("init")
             git.run("config", "user.email", "test@example.com")
-            git.run("config", "user.name", "GigaLphex Test")
+            git.run("config", "user.name", "GigaFlex Test")
             (repo / "tracked.txt").write_text("tracked\n", encoding="utf-8")
             git.run("add", ".")
             git.run("commit", "-m", "initial")
@@ -42,7 +42,7 @@ class GitServiceTest(unittest.TestCase):
             git = GitService(repo)
             git.run("init")
             git.run("config", "user.email", "test@example.com")
-            git.run("config", "user.name", "GigaLphex Test")
+            git.run("config", "user.name", "GigaFlex Test")
             (repo / "one.txt").write_text("one\n", encoding="utf-8")
             git.run("add", ".")
             git.run("commit", "-m", "base")
@@ -64,7 +64,7 @@ class GitServiceTest(unittest.TestCase):
             git = GitService(repo)
             git.run("init")
             git.run("config", "user.email", "test@example.com")
-            git.run("config", "user.name", "GigaLphex Test")
+            git.run("config", "user.name", "GigaFlex Test")
 
             (repo / ".gitignore").write_text("ignored.txt\n", encoding="utf-8")
             tracked = repo / "tracked.txt"
@@ -103,7 +103,7 @@ class GitServiceTest(unittest.TestCase):
             self.assertEqual(head_before, git.head_commit())
             self.assertEqual(status_before, git.run("status", "--short").stdout)
             worktree_list = git.run("worktree", "list", "--porcelain").stdout
-            self.assertNotIn("gigalphex-review-", worktree_list)
+            self.assertNotIn("gigaflex-review-", worktree_list)
             self.assertIn("event=snapshot_created", "\n".join(diagnostics))
             self.assertIn("event=removed", "\n".join(diagnostics))
 
@@ -142,7 +142,7 @@ class GitServiceTest(unittest.TestCase):
             assert created_path is not None
             self.assertFalse(created_path.exists())
             self.assertNotIn(
-                "gigalphex-review-",
+                "gigaflex-review-",
                 git.run("worktree", "list", "--porcelain").stdout,
             )
 
@@ -152,7 +152,7 @@ class GitServiceTest(unittest.TestCase):
             git = GitService(repo)
             git.run("init")
             git.run("config", "user.email", "test@example.com")
-            git.run("config", "user.name", "GigaLphex Test")
+            git.run("config", "user.name", "GigaFlex Test")
 
             original = repo / "old name.txt"
             original.write_text("tracked\n", encoding="utf-8")
@@ -193,7 +193,7 @@ class GitServiceTest(unittest.TestCase):
             git = GitService(repo)
             git.run("init")
             git.run("config", "user.email", "test@example.com")
-            git.run("config", "user.name", "GigaLphex Test")
+            git.run("config", "user.name", "GigaFlex Test")
 
             (repo / "one.txt").write_text("one\n", encoding="utf-8")
             git.run("add", ".")
@@ -212,7 +212,7 @@ class GitServiceTest(unittest.TestCase):
             git = GitService(repo)
             git.run("init")
             git.run("config", "user.email", "test@example.com")
-            git.run("config", "user.name", "GigaLphex Test")
+            git.run("config", "user.name", "GigaFlex Test")
 
             (repo / "one.txt").write_text("one\n", encoding="utf-8")
             git.run("add", ".")
@@ -271,7 +271,7 @@ class GitServiceTest(unittest.TestCase):
             git = GitService(repo)
             git.run("init")
             git.run("config", "user.email", "test@example.com")
-            git.run("config", "user.name", "GigaLphex Test")
+            git.run("config", "user.name", "GigaFlex Test")
 
             (repo / "one.txt").write_text("one\n", encoding="utf-8")
             git.run("add", ".")

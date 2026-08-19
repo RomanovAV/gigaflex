@@ -5,7 +5,7 @@ import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "python"))
 
-from gigalphex.skills import (
+from gigaflex.skills import (
     install_planning_skill,
     install_superpowers_converter_skill,
     planning_skill_installed,
@@ -29,7 +29,7 @@ class SkillsTest(unittest.TestCase):
     def test_bundled_superpowers_converter_skill_has_expected_metadata(self) -> None:
         text = superpowers_converter_skill_text()
 
-        self.assertIn("name: superpowers-to-gigalphex", text)
+        self.assertIn("name: superpowers-to-gigaflex", text)
         self.assertIn("Convert a Superpowers design spec", text)
         self.assertIn("docs/superpowers/specs", text)
         self.assertIn("Remove Superpowers-only process directives", text)

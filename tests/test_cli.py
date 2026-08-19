@@ -12,7 +12,7 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "python"))
 
-from gigalphex.cli import (
+from gigaflex.cli import (
     add_gigacode_args,
     branch_for_plan,
     build_parser,
@@ -83,13 +83,13 @@ class CliTest(unittest.TestCase):
                 os.chdir(original_cwd)
 
             self.assertEqual(0, code)
-            config = home / ".config/gigalphex/config"
+            config = home / ".config/gigaflex/config"
             self.assertTrue(config.is_file())
             self.assertIn("# task_model =", config.read_text(encoding="utf-8"))
-            self.assertTrue((home / ".config/gigalphex/prompts/task.txt").is_file())
-            self.assertTrue((home / ".config/gigalphex/prompts/plan_skill.txt").is_file())
-            self.assertTrue((home / ".config/gigalphex/prompts/review_synthesis.txt").is_file())
-            self.assertFalse((project / ".gigalphex/prompts").exists())
+            self.assertTrue((home / ".config/gigaflex/prompts/task.txt").is_file())
+            self.assertTrue((home / ".config/gigaflex/prompts/plan_skill.txt").is_file())
+            self.assertTrue((home / ".config/gigaflex/prompts/review_synthesis.txt").is_file())
+            self.assertFalse((project / ".gigaflex/prompts").exists())
 
     def test_regular_command_falls_back_to_local_files_when_global_config_is_unavailable(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -114,9 +114,9 @@ class CliTest(unittest.TestCase):
 
             self.assertEqual(0, code)
             self.assertTrue((skills_dir / "planning/SKILL.md").is_file())
-            self.assertTrue((project / ".gigalphex/config").is_file())
-            self.assertTrue((project / ".gigalphex/prompts/task.txt").is_file())
-            self.assertTrue((project / ".gigalphex/prompts/plan_skill.txt").is_file())
+            self.assertTrue((project / ".gigaflex/config").is_file())
+            self.assertTrue((project / ".gigaflex/prompts/task.txt").is_file())
+            self.assertTrue((project / ".gigaflex/prompts/plan_skill.txt").is_file())
             self.assertIn("installed planning skill", stdout.getvalue())
             self.assertEqual("", stderr.getvalue())
 
@@ -135,9 +135,9 @@ class CliTest(unittest.TestCase):
                 os.chdir(original_cwd)
 
             self.assertEqual(0, code)
-            self.assertTrue((project / ".gigalphex/prompts/task.txt").is_file())
-            self.assertTrue((project / ".gigalphex/prompts/review_synthesis.txt").is_file())
-            self.assertFalse((project / ".gigalphex/config").exists())
+            self.assertTrue((project / ".gigaflex/prompts/task.txt").is_file())
+            self.assertTrue((project / ".gigaflex/prompts/review_synthesis.txt").is_file())
+            self.assertFalse((project / ".gigaflex/config").exists())
 
     def test_auto_init_requires_existing_plan_file(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -228,12 +228,12 @@ class CliTest(unittest.TestCase):
                 os.chdir(repo)
                 subprocess.run(["git", "init"], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                 subprocess.run(["git", "config", "user.email", "test@example.com"], check=True)
-                subprocess.run(["git", "config", "user.name", "GigaLphex Test"], check=True)
+                subprocess.run(["git", "config", "user.name", "GigaFlex Test"], check=True)
                 subprocess.run(["git", "add", "."], check=True)
                 subprocess.run(["git", "commit", "-m", "initial"], check=True, stdout=subprocess.PIPE)
 
                 with patch.dict(os.environ, {"HOME": str(home)}), patch(
-                    "gigalphex.cli.Runner.run"
+                    "gigaflex.cli.Runner.run"
                 ), contextlib.redirect_stdout(stdout):
                     code = main(["--openspec", str(change), "--no-branch"])
             finally:
@@ -368,7 +368,7 @@ class CliTest(unittest.TestCase):
                 """#!/usr/bin/env python3
 import sys
 sys.stdin.read()
-print("<<<GIGALPHEX:ALL_TASKS_DONE>>>")
+print("<<<GIGAFLEX:ALL_TASKS_DONE>>>")
 """,
             )
             plan = tmp_path / "docs/plans/20260612-smoke.md"
@@ -402,10 +402,10 @@ print("<<<GIGALPHEX:ALL_TASKS_DONE>>>")
                 os.chdir(original_cwd)
 
             self.assertEqual(0, code)
-            self.assertTrue((tmp_path / ".gigalphex/config").exists())
-            self.assertTrue((tmp_path / ".gigalphex/prompts/task.txt").is_file())
+            self.assertTrue((tmp_path / ".gigaflex/config").exists())
+            self.assertTrue((tmp_path / ".gigaflex/prompts/task.txt").is_file())
             progress = (
-                tmp_path / ".gigalphex/progress/progress-20260612-smoke.txt"
+                tmp_path / ".gigaflex/progress/progress-20260612-smoke.txt"
             ).read_text(encoding="utf-8")
             self.assertIn("plan already has no uncompleted task sections", progress)
             self.assertNotIn("session=task event=prepared", progress)
@@ -476,7 +476,7 @@ print("<<<GIGALPHEX:ALL_TASKS_DONE>>>")
                 """#!/usr/bin/env python3
 import sys
 sys.stdin.read()
-print("<<<GIGALPHEX:ALL_TASKS_DONE>>>")
+print("<<<GIGAFLEX:ALL_TASKS_DONE>>>")
 """,
             )
             plan = repo / "docs/plans/20260612-smoke.md"
@@ -495,7 +495,7 @@ print("<<<GIGALPHEX:ALL_TASKS_DONE>>>")
                 os.chdir(repo)
                 subprocess.run(["git", "init"], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                 subprocess.run(["git", "config", "user.email", "test@example.com"], check=True)
-                subprocess.run(["git", "config", "user.name", "GigaLphex Test"], check=True)
+                subprocess.run(["git", "config", "user.name", "GigaFlex Test"], check=True)
                 subprocess.run(["git", "add", "."], check=True)
                 subprocess.run(["git", "commit", "-m", "initial"], check=True, stdout=subprocess.PIPE)
 
@@ -518,7 +518,7 @@ print("<<<GIGALPHEX:ALL_TASKS_DONE>>>")
 
             self.assertEqual(0, code)
             self.assertEqual("", stderr.getvalue())
-            self.assertTrue((repo / ".gigalphex/config").exists())
+            self.assertTrue((repo / ".gigaflex/config").exists())
 
     def test_plan_execution_init_git_commits_initial_state_before_dirty_check(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -529,7 +529,7 @@ print("<<<GIGALPHEX:ALL_TASKS_DONE>>>")
                 """#!/usr/bin/env python3
 import sys
 sys.stdin.read()
-print("<<<GIGALPHEX:ALL_TASKS_DONE>>>")
+print("<<<GIGAFLEX:ALL_TASKS_DONE>>>")
 """,
             )
             plan = tmp_path / "docs/plans/20260612-smoke.md"
@@ -547,9 +547,9 @@ print("<<<GIGALPHEX:ALL_TASKS_DONE>>>")
                 os.chdir(tmp_path)
                 stdout = io.StringIO()
                 git_env = {
-                    "GIT_AUTHOR_NAME": "GigaLphex Test",
+                    "GIT_AUTHOR_NAME": "GigaFlex Test",
                     "GIT_AUTHOR_EMAIL": "test@example.com",
-                    "GIT_COMMITTER_NAME": "GigaLphex Test",
+                    "GIT_COMMITTER_NAME": "GigaFlex Test",
                     "GIT_COMMITTER_EMAIL": "test@example.com",
                 }
                 with patch.dict(os.environ, git_env), contextlib.redirect_stdout(stdout):
@@ -601,7 +601,7 @@ print("- [ ] Do it")
                 os.chdir(tmp_path)
                 subprocess.run(["git", "init"], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                 subprocess.run(["git", "config", "user.email", "test@example.com"], check=True)
-                subprocess.run(["git", "config", "user.name", "GigaLphex Test"], check=True)
+                subprocess.run(["git", "config", "user.name", "GigaFlex Test"], check=True)
                 Path("README.md").write_text("# Demo\n", encoding="utf-8")
                 subprocess.run(["git", "add", "README.md"], check=True)
                 subprocess.run(["git", "commit", "-m", "initial"], check=True, stdout=subprocess.PIPE)
@@ -620,12 +620,12 @@ print("- [ ] Do it")
 
             self.assertEqual(0, code)
             self.assertIn("docs: add plan 202", committed)
-            self.assertIn(".gigalphex/config", committed)
+            self.assertIn(".gigaflex/config", committed)
             self.assertIn(".gitignore", committed)
             self.assertIn("docs/plans/", committed)
             self.assertIn("add-demo-feature.md", committed)
-            self.assertTrue((tmp_path / ".gigalphex/config").exists())
-            self.assertTrue((tmp_path / ".gigalphex/prompts/task.txt").is_file())
+            self.assertTrue((tmp_path / ".gigaflex/config").exists())
+            self.assertTrue((tmp_path / ".gigaflex/prompts/task.txt").is_file())
 
     def test_plan_creation_with_jira_task_uses_corporate_branch_and_commit_prefix(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -651,7 +651,7 @@ print("- [ ] Do it")
                 os.chdir(tmp_path)
                 subprocess.run(["git", "init"], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                 subprocess.run(["git", "config", "user.email", "test@example.com"], check=True)
-                subprocess.run(["git", "config", "user.name", "GigaLphex Test"], check=True)
+                subprocess.run(["git", "config", "user.name", "GigaFlex Test"], check=True)
                 Path("README.md").write_text("# Demo\n", encoding="utf-8")
                 subprocess.run(["git", "add", "README.md"], check=True)
                 subprocess.run(["git", "commit", "-m", "initial"], check=True, stdout=subprocess.PIPE)
@@ -693,7 +693,7 @@ print("- [ ] Do it")
                         "config",
                         "--local",
                         "--get",
-                        "branch.feature/PROJ-123-add-demo-feature.gigalphexBaseCommit",
+                        "branch.feature/PROJ-123-add-demo-feature.gigaflexBaseCommit",
                     ],
                     check=True,
                     text=True,
@@ -735,7 +735,7 @@ target.write_text("# Plan: Demo\\n\\n### Task 1: Build\\n- [ ] Do it\\n")
                 os.chdir(tmp_path)
                 stdout = io.StringIO()
                 with patch.dict(os.environ, {"HOME": str(home)}), patch(
-                    "gigalphex.cli.should_use_interactive_plan",
+                    "gigaflex.cli.should_use_interactive_plan",
                     return_value=True,
                 ), contextlib.redirect_stdout(stdout):
                     code = main(
@@ -771,7 +771,7 @@ target.write_text("# Plan: Demo\\n\\n### Task 1: Build\\n- [ ] Do it\\n")
                 os.chdir(tmp_path)
                 stderr = io.StringIO()
                 with patch.dict(os.environ, {"HOME": str(home)}), patch(
-                    "gigalphex.cli.should_use_interactive_plan",
+                    "gigaflex.cli.should_use_interactive_plan",
                     return_value=True,
                 ), contextlib.redirect_stderr(stderr):
                     code = main(["--plan", "add demo feature"])
@@ -782,7 +782,7 @@ target.write_text("# Plan: Demo\\n\\n### Task 1: Build\\n- [ ] Do it\\n")
             self.assertIn("planning skill not found", stderr.getvalue())
             self.assertIn("--install-planning-skill", stderr.getvalue())
             self.assertIn("--quick", stderr.getvalue())
-            self.assertFalse((tmp_path / ".gigalphex").exists())
+            self.assertFalse((tmp_path / ".gigaflex").exists())
 
     def test_install_planning_skill_to_explicit_directory(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -814,12 +814,12 @@ target.write_text("# Plan: Demo\\n\\n### Task 1: Build\\n- [ ] Do it\\n")
                     str(skills_dir),
                 ])
 
-            skill = skills_dir / "superpowers-to-gigalphex/SKILL.md"
+            skill = skills_dir / "superpowers-to-gigaflex/SKILL.md"
             self.assertEqual(0, code)
             self.assertTrue(skill.is_file())
-            self.assertIn("name: superpowers-to-gigalphex", skill.read_text(encoding="utf-8"))
+            self.assertIn("name: superpowers-to-gigaflex", skill.read_text(encoding="utf-8"))
             self.assertIn(
-                f"installed superpowers-to-gigalphex skill: {skill}",
+                f"installed superpowers-to-gigaflex skill: {skill}",
                 stdout.getvalue(),
             )
 
@@ -874,9 +874,9 @@ print("- [ ] Do it")
                 os.chdir(tmp_path)
                 stdout = io.StringIO()
                 git_env = {
-                    "GIT_AUTHOR_NAME": "GigaLphex Test",
+                    "GIT_AUTHOR_NAME": "GigaFlex Test",
                     "GIT_AUTHOR_EMAIL": "test@example.com",
-                    "GIT_COMMITTER_NAME": "GigaLphex Test",
+                    "GIT_COMMITTER_NAME": "GigaFlex Test",
                     "GIT_COMMITTER_EMAIL": "test@example.com",
                 }
                 with patch.dict(os.environ, git_env), contextlib.redirect_stdout(stdout):
@@ -915,7 +915,7 @@ print("- [ ] Do it")
                 os.chdir(repo)
                 subprocess.run(["git", "init"], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                 subprocess.run(["git", "config", "user.email", "test@example.com"], check=True)
-                subprocess.run(["git", "config", "user.name", "GigaLphex Test"], check=True)
+                subprocess.run(["git", "config", "user.name", "GigaFlex Test"], check=True)
                 Path("README.md").write_text("# Demo\n", encoding="utf-8")
                 subprocess.run(["git", "add", "README.md"], check=True)
                 subprocess.run(["git", "commit", "-m", "initial"], check=True, stdout=subprocess.PIPE)
@@ -928,7 +928,7 @@ print("- [ ] Do it")
                 os.chdir(original_cwd)
 
             self.assertEqual(1, code)
-            self.assertIn("no GigaLphex review base is stored for branch master", stderr.getvalue())
+            self.assertIn("no GigaFlex review base is stored for branch master", stderr.getvalue())
             self.assertIn("--base-ref REF", stderr.getvalue())
 
     def test_plan_resume_on_existing_execution_branch_requires_stored_base(self) -> None:
@@ -945,7 +945,7 @@ print("- [ ] Do it")
                 os.chdir(repo)
                 subprocess.run(["git", "init"], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                 subprocess.run(["git", "config", "user.email", "test@example.com"], check=True)
-                subprocess.run(["git", "config", "user.name", "GigaLphex Test"], check=True)
+                subprocess.run(["git", "config", "user.name", "GigaFlex Test"], check=True)
                 subprocess.run(["git", "add", "."], check=True)
                 subprocess.run(["git", "commit", "-m", "feature state"], check=True, stdout=subprocess.PIPE)
                 subprocess.run(["git", "branch", "-m", "demo"], check=True)
@@ -962,7 +962,7 @@ print("- [ ] Do it")
 
             self.assertEqual(1, code)
             self.assertIn(
-                "no GigaLphex review base is stored for branch demo",
+                "no GigaFlex review base is stored for branch demo",
                 stderr.getvalue(),
             )
             self.assertIn("--base-ref REF", stderr.getvalue())
@@ -984,9 +984,9 @@ prompt = "\\n".join(sys.argv[1:]) + "\\nSTDIN\\n" + sys.stdin.read()
 with Path({str(capture)!r}).open("a") as fh:
     fh.write(prompt)
 if "specialist review agents have returned" in prompt:
-    print("<<<GIGALPHEX:REVIEW_DONE>>>")
+    print("<<<GIGAFLEX:REVIEW_DONE>>>")
 elif "Phase: final verification" in prompt:
-    print("<<<GIGALPHEX:FINALIZE_DONE>>>")
+    print("<<<GIGAFLEX:FINALIZE_DONE>>>")
 else:
     print("NO FINDINGS")
 """,
@@ -996,7 +996,7 @@ else:
                 os.chdir(repo)
                 subprocess.run(["git", "init"], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                 subprocess.run(["git", "config", "user.email", "test@example.com"], check=True)
-                subprocess.run(["git", "config", "user.name", "GigaLphex Test"], check=True)
+                subprocess.run(["git", "config", "user.name", "GigaFlex Test"], check=True)
                 Path("README.md").write_text("# Demo\n", encoding="utf-8")
                 subprocess.run(["git", "add", "README.md"], check=True)
                 subprocess.run(["git", "commit", "-m", "initial"], check=True, stdout=subprocess.PIPE)
@@ -1021,13 +1021,13 @@ else:
                         ]
                     )
                 stored_commit = subprocess.run(
-                    ["git", "config", "--local", "--get", "branch.master.gigalphexBaseCommit"],
+                    ["git", "config", "--local", "--get", "branch.master.gigaflexBaseCommit"],
                     check=True,
                     text=True,
                     stdout=subprocess.PIPE,
                 ).stdout.strip()
                 stored_branch = subprocess.run(
-                    ["git", "config", "--local", "--get", "branch.master.gigalphexBaseBranch"],
+                    ["git", "config", "--local", "--get", "branch.master.gigaflexBaseBranch"],
                     check=True,
                     text=True,
                     stdout=subprocess.PIPE,
@@ -1065,7 +1065,7 @@ print("NO FINDINGS")
                 os.chdir(repo)
                 subprocess.run(["git", "init"], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                 subprocess.run(["git", "config", "user.email", "test@example.com"], check=True)
-                subprocess.run(["git", "config", "user.name", "GigaLphex Test"], check=True)
+                subprocess.run(["git", "config", "user.name", "GigaFlex Test"], check=True)
                 plan = repo / "docs/plans/20260818-demo.md"
                 plan.parent.mkdir(parents=True)
                 plan.write_text(
@@ -1102,13 +1102,13 @@ print("NO FINDINGS")
                     stdout=subprocess.PIPE,
                 ).stdout.strip()
                 stored_commit = subprocess.run(
-                    ["git", "config", "--local", "--get", "branch.feature/demo.gigalphexBaseCommit"],
+                    ["git", "config", "--local", "--get", "branch.feature/demo.gigaflexBaseCommit"],
                     check=True,
                     text=True,
                     stdout=subprocess.PIPE,
                 ).stdout.strip()
                 stored_branch = subprocess.run(
-                    ["git", "config", "--local", "--get", "branch.feature/demo.gigalphexBaseBranch"],
+                    ["git", "config", "--local", "--get", "branch.feature/demo.gigaflexBaseBranch"],
                     check=True,
                     text=True,
                     stdout=subprocess.PIPE,
@@ -1146,7 +1146,7 @@ print("NO FINDINGS")
                 os.chdir(repo)
                 subprocess.run(["git", "init"], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                 subprocess.run(["git", "config", "user.email", "test@example.com"], check=True)
-                subprocess.run(["git", "config", "user.name", "GigaLphex Test"], check=True)
+                subprocess.run(["git", "config", "user.name", "GigaFlex Test"], check=True)
                 Path("README.md").write_text("base\n", encoding="utf-8")
                 subprocess.run(["git", "add", "."], check=True)
                 subprocess.run(["git", "commit", "-m", "base"], check=True, stdout=subprocess.PIPE)
@@ -1161,11 +1161,11 @@ print("NO FINDINGS")
                 Path("README.md").write_text("feature\n", encoding="utf-8")
                 subprocess.run(["git", "commit", "-am", "feature"], check=True, stdout=subprocess.PIPE)
                 subprocess.run(
-                    ["git", "config", "--local", "branch.feature/demo.gigalphexBaseBranch", "release"],
+                    ["git", "config", "--local", "branch.feature/demo.gigaflexBaseBranch", "release"],
                     check=True,
                 )
                 subprocess.run(
-                    ["git", "config", "--local", "branch.feature/demo.gigalphexBaseCommit", base_commit],
+                    ["git", "config", "--local", "branch.feature/demo.gigaflexBaseCommit", base_commit],
                     check=True,
                 )
 
@@ -1198,13 +1198,13 @@ print("NO FINDINGS")
 import sys
 prompt = " ".join(sys.argv[1:]) + sys.stdin.read()
 if "specialist review agents" in prompt:
-    print("<<<GIGALPHEX:REVIEW_DONE>>>")
+    print("<<<GIGAFLEX:REVIEW_DONE>>>")
 elif "Phase: final verification" in prompt:
-    print("<<<GIGALPHEX:FINALIZE_DONE>>>")
+    print("<<<GIGAFLEX:FINALIZE_DONE>>>")
 elif "You are the" in prompt:
     print("NO FINDINGS")
 else:
-    print("<<<GIGALPHEX:ALL_TASKS_DONE>>>")
+    print("<<<GIGAFLEX:ALL_TASKS_DONE>>>")
 """,
             )
 
@@ -1212,7 +1212,7 @@ else:
                 os.chdir(tmp_path)
                 subprocess.run(["git", "init"], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                 subprocess.run(["git", "config", "user.email", "test@example.com"], check=True)
-                subprocess.run(["git", "config", "user.name", "GigaLphex Test"], check=True)
+                subprocess.run(["git", "config", "user.name", "GigaFlex Test"], check=True)
 
                 with contextlib.redirect_stdout(io.StringIO()):
                     self.assertEqual(0, main(["--init"]))
@@ -1305,7 +1305,7 @@ print(json.dumps({
                 os.chdir(tmp_path)
                 subprocess.run(["git", "init"], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                 subprocess.run(["git", "config", "user.email", "test@example.com"], check=True)
-                subprocess.run(["git", "config", "user.name", "GigaLphex Test"], check=True)
+                subprocess.run(["git", "config", "user.name", "GigaFlex Test"], check=True)
                 plan = tmp_path / "docs/plans/20260612-smoke.md"
                 plan.parent.mkdir(parents=True)
                 plan.write_text(
@@ -1335,9 +1335,9 @@ print(json.dumps({
             finally:
                 os.chdir(original_cwd)
 
-            stats_file = (tmp_path / ".gigalphex/progress/stats-20260612-smoke.json").resolve()
-            dashboard_file = (tmp_path / ".gigalphex/progress/status-20260612-smoke.html").resolve()
-            dashboard_json = (tmp_path / ".gigalphex/progress/status-20260612-smoke.json").resolve()
+            stats_file = (tmp_path / ".gigaflex/progress/stats-20260612-smoke.json").resolve()
+            dashboard_file = (tmp_path / ".gigaflex/progress/status-20260612-smoke.html").resolve()
+            dashboard_json = (tmp_path / ".gigaflex/progress/status-20260612-smoke.json").resolve()
             stats = json.loads(stats_file.read_text(encoding="utf-8"))
             dashboard_state = json.loads(dashboard_json.read_text(encoding="utf-8"))
             self.assertEqual(0, code)
@@ -1364,7 +1364,7 @@ print(json.dumps({
                 os.chdir(tmp_path)
                 subprocess.run(["git", "init"], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                 subprocess.run(["git", "config", "user.email", "test@example.com"], check=True)
-                subprocess.run(["git", "config", "user.name", "GigaLphex Test"], check=True)
+                subprocess.run(["git", "config", "user.name", "GigaFlex Test"], check=True)
                 Path("README.md").write_text("# Demo\n", encoding="utf-8")
                 subprocess.run(["git", "add", "README.md"], check=True)
                 subprocess.run(["git", "commit", "-m", "initial"], check=True, stdout=subprocess.PIPE)
@@ -1373,7 +1373,7 @@ print(json.dumps({
                 stderr = io.StringIO()
                 with (
                     patch.dict(os.environ, {"HOME": str(home)}),
-                    patch("gigalphex.cli.Runner.run", side_effect=KeyboardInterrupt),
+                    patch("gigaflex.cli.Runner.run", side_effect=KeyboardInterrupt),
                     contextlib.redirect_stdout(stdout),
                     contextlib.redirect_stderr(stderr),
                 ):
@@ -1389,7 +1389,7 @@ print(json.dumps({
             finally:
                 os.chdir(original_cwd)
 
-            stats_file = (tmp_path / ".gigalphex/progress/stats-review.json").resolve()
+            stats_file = (tmp_path / ".gigaflex/progress/stats-review.json").resolve()
             stats = json.loads(stats_file.read_text(encoding="utf-8"))
             self.assertEqual(130, code)
             self.assertEqual("interrupted", stats["status"])
@@ -1407,7 +1407,7 @@ print(json.dumps({
                 """#!/usr/bin/env python3
 import sys
 sys.stdin.read()
-print("<<<GIGALPHEX:ALL_TASKS_DONE>>>")
+print("<<<GIGAFLEX:ALL_TASKS_DONE>>>")
 """,
             )
 
@@ -1415,7 +1415,7 @@ print("<<<GIGALPHEX:ALL_TASKS_DONE>>>")
                 os.chdir(tmp_path)
                 subprocess.run(["git", "init"], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                 subprocess.run(["git", "config", "user.email", "test@example.com"], check=True)
-                subprocess.run(["git", "config", "user.name", "GigaLphex Test"], check=True)
+                subprocess.run(["git", "config", "user.name", "GigaFlex Test"], check=True)
 
                 with contextlib.redirect_stdout(io.StringIO()):
                     self.assertEqual(0, main(["--init"]))
@@ -1448,7 +1448,7 @@ print("<<<GIGALPHEX:ALL_TASKS_DONE>>>")
             finally:
                 os.chdir(original_cwd)
 
-            worktree = tmp_path / ".gigalphex/worktrees/smoke"
+            worktree = tmp_path / ".gigaflex/worktrees/smoke"
             branch = subprocess.run(
                 ["git", "-C", str(worktree), "branch", "--show-current"],
                 check=True,
@@ -1475,7 +1475,7 @@ print("<<<GIGALPHEX:ALL_TASKS_DONE>>>")
             fake_gigacode = write_script(
                 tmp_path / "fake_gigacode.py",
                 """#!/usr/bin/env python3
-print("<<<GIGALPHEX:ALL_TASKS_DONE>>>")
+print("<<<GIGAFLEX:ALL_TASKS_DONE>>>")
 """,
             )
 
@@ -1483,7 +1483,7 @@ print("<<<GIGALPHEX:ALL_TASKS_DONE>>>")
                 os.chdir(tmp_path)
                 subprocess.run(["git", "init"], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                 subprocess.run(["git", "config", "user.email", "test@example.com"], check=True)
-                subprocess.run(["git", "config", "user.name", "GigaLphex Test"], check=True)
+                subprocess.run(["git", "config", "user.name", "GigaFlex Test"], check=True)
 
                 with contextlib.redirect_stdout(io.StringIO()):
                     self.assertEqual(0, main(["--init"]))
@@ -1513,7 +1513,7 @@ print("<<<GIGALPHEX:ALL_TASKS_DONE>>>")
             finally:
                 os.chdir(original_cwd)
 
-            worktree = tmp_path / ".gigalphex/worktrees/add-search"
+            worktree = tmp_path / ".gigaflex/worktrees/add-search"
             branch = subprocess.run(
                 ["git", "-C", str(worktree), "branch", "--show-current"],
                 check=True,

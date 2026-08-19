@@ -9,5 +9,5 @@ venv/
 build/
 dist/
 *.egg-info/
-.gigalphex/progress/
-.gigalphex/worktrees/
+.gigaflex/progress/
+.gigaflex/worktrees/

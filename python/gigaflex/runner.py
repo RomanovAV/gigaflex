@@ -58,7 +58,7 @@ class RunOptions:
     delay_seconds: float = 1.0
     prompts: PromptTemplates = field(default_factory=lambda: DEFAULT_PROMPTS)
     jira_task: str = ""
-    plan_kind: str = "gigalphex"
+    plan_kind: str = "gigaflex"
     plan_source: Optional[Path] = None
     plan_context_files: tuple[Path, ...] = ()
     task_completion_retries: int = 1

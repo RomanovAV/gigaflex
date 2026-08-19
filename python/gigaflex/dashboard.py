@@ -30,7 +30,7 @@ class ProgressDashboard:
         *,
         name: str,
         plan_file: Optional[Path],
-        plan_kind: str = "gigalphex",
+        plan_kind: str = "gigaflex",
         progress_file: Optional[Path] = None,
         branch: str = "",
         tasks_enabled: bool = True,
@@ -461,7 +461,7 @@ def _tasks_state(plan: Plan) -> list[dict[str, object]]:
 
 
 def _render_html(state: dict[str, object]) -> str:
-    title = html.escape(str(state.get("title") or state.get("name") or "GigaLphex run"))
+    title = html.escape(str(state.get("title") or state.get("name") or "GigaFlex run"))
     status = str(state.get("status", "running"))
     status_label = {
         "running": "Running",
@@ -511,7 +511,7 @@ def _render_html(state: dict[str, object]) -> str:
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   {refresh_meta}
-  <title>{title} · GigaLphex</title>
+  <title>{title} · GigaFlex</title>
   <style>
     :root {{ color-scheme: dark; --bg:#0b0d10; --panel:#12161b; --line:#28313b; --muted:#8d99a6; --text:#eef3f7; --accent:#7ce2b1; --blue:#79b8ff; --warn:#f6c177; --bad:#ff7b72; }}
     * {{ box-sizing:border-box; }}
@@ -565,7 +565,7 @@ def _render_html(state: dict[str, object]) -> str:
 <body>
   <main>
     <header>
-      <div><div class="eyebrow">GigaLphex progress</div><h1>{title}</h1><div class="message">{message}</div>{f'<div class="error">{error}</div>' if error else ''}</div>
+      <div><div class="eyebrow">GigaFlex progress</div><h1>{title}</h1><div class="message">{message}</div>{f'<div class="error">{error}</div>' if error else ''}</div>
       <div class="status status-{html.escape(status)}"><span class="dot"></span>{html.escape(status_label)} · <span id="elapsed">—</span></div>
     </header>
     <section class="phases" aria-label="Run phases">{phase_html}</section>

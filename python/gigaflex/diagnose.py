@@ -55,25 +55,25 @@ def _run_captured(argv: list[str], log_path: Path) -> tuple[int, str]:
 
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Compare direct GigaCode, captured subprocess, and GigaLphex executor behavior.",
+        description="Compare direct GigaCode, captured subprocess, and GigaFlex executor behavior.",
     )
     parser.add_argument(
         "--plan",
         type=Path,
-        help="also run the exact GigaLphex task prompt for this plan once",
+        help="also run the exact GigaFlex task prompt for this plan once",
     )
     return parser.parse_args()
 
 
 def main() -> int:
     args = _parse_args()
-    prompt = os.getenv("GIGALPHEX_DIAGNOSTIC_PROMPT", DEFAULT_PROMPT)
-    log_dir = Path(".gigalphex/diagnostics") / datetime.now().strftime("%Y%m%d-%H%M%S")
+    prompt = os.getenv("GIGAFLEX_DIAGNOSTIC_PROMPT", DEFAULT_PROMPT)
+    log_dir = Path(".gigaflex/diagnostics") / datetime.now().strftime("%Y%m%d-%H%M%S")
     log_dir.mkdir(parents=True, exist_ok=True)
     argv = _argv(prompt)
     cfg = load_config()
 
-    print("GigaCode/GigaLphex diagnostic")
+    print("GigaCode/GigaFlex diagnostic")
     print(f"working directory: {Path.cwd()}")
     print(f"python: {sys.executable}")
     print(f"executor command: {cfg.gigacode_command}")

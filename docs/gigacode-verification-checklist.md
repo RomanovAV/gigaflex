@@ -18,7 +18,7 @@ These checks passed in prior verification runs with GigaCode `26.5.17`:
 - Real `--plan` created markdown plans under `docs/plans/`.
 - Generated plans were not wrapped in markdown code fences.
 - Repeated `--plan` did not overwrite the first file; it created `-2.md`.
-- Custom `.gigalphex/prompts/make_plan.txt` overrode the embedded prompt.
+- Custom `.gigaflex/prompts/make_plan.txt` overrode the embedded prompt.
 - The previous newline fix worked: `created plan:` and `progress log:` no
   longer stick to the last line of GigaCode output.
 - Small task execution passed end-to-end on 2026-06-12 with the same explicit
@@ -67,7 +67,7 @@ Notes:
 From the repository root, not from `/tmp`:
 
 ```bash
-cd /path/to/gigalphex
+cd /path/to/gigaflex
 PYTHONPATH=python python3 -m unittest discover -s tests
 ```
 
@@ -86,11 +86,11 @@ Notes:
 Use a clean temporary git repository so the smoke test cannot disturb real work:
 
 ```bash
-mkdir -p /tmp/gigalphex-task-check
-cd /tmp/gigalphex-task-check
+mkdir -p /tmp/gigaflex-task-check
+cd /tmp/gigaflex-task-check
 git init
 git config user.email "test@example.com"
-git config user.name "GigaLphex Test"
+git config user.name "GigaFlex Test"
 mkdir -p docs/plans
 cat > README.md <<'EOF'
 # Smoke Repo
@@ -108,7 +108,7 @@ Create `docs/plans/20260612-smoke.md`:
 Add a tiny smoke-test artifact.
 
 ## Context
-This checks that gigalphex can run GigaCode non-interactively.
+This checks that gigaflex can run GigaCode non-interactively.
 
 ### Task 1: Add smoke file
 - [ ] Create `SMOKE_TEST.md` with one short sentence.
@@ -122,7 +122,7 @@ This checks that gigalphex can run GigaCode non-interactively.
 Run:
 
 ```bash
-PYTHONPATH=/path/to/gigalphex/python python3 -m gigalphex.cli docs/plans/20260612-smoke.md --allow-dirty --tasks-only --no-move-plan
+PYTHONPATH=/path/to/gigaflex/python python3 -m gigaflex.cli docs/plans/20260612-smoke.md --allow-dirty --tasks-only --no-move-plan
 ```
 
 Expected:
@@ -138,8 +138,8 @@ Expected:
 - The command prints `dashboard: .../status-20260612-smoke.html`.
 - `status-20260612-smoke.html` is self-contained and shows the completed run;
   `status-20260612-smoke.json` has `"status": "success"`.
-- The progress log contains `<<<GIGALPHEX:ALL_TASKS_DONE>>>` or a clear success
-  path, not `<<<GIGALPHEX:TASK_FAILED>>>`.
+- The progress log contains `<<<GIGAFLEX:ALL_TASKS_DONE>>>` or a clear success
+  path, not `<<<GIGAFLEX:TASK_FAILED>>>`.
 
 Collect:
 
@@ -148,17 +148,17 @@ git log --oneline --decorate -5
 git status --short
 cat docs/plans/20260612-smoke.md
 cat SMOKE_TEST.md
-cat .gigalphex/progress/progress-20260612-smoke.txt
-cat .gigalphex/progress/status-20260612-smoke.json
+cat .gigaflex/progress/progress-20260612-smoke.txt
+cat .gigaflex/progress/status-20260612-smoke.json
 ```
 
 Notes:
 
 ```text
-Verified on 2026-06-12 in /tmp/gigalphex-task-check.
+Verified on 2026-06-12 in /tmp/gigaflex-task-check.
 
 Command:
-PYTHONPATH=/Users/19268765/IdeaProjects/gigalphex-new/python:$PYTHONPATH python3 -m gigalphex.cli docs/plans/20260612-smoke.md --allow-dirty --tasks-only --no-move-plan
+PYTHONPATH=/Users/19268765/IdeaProjects/gigaflex-new/python:$PYTHONPATH python3 -m gigaflex.cli docs/plans/20260612-smoke.md --allow-dirty --tasks-only --no-move-plan
 
 Observed:
 - No non-interactive shell approval warning.
@@ -169,7 +169,7 @@ Observed:
   81796c9 feat: mark smoke-task checkboxes complete
   e84517b feat: add smoke-test artifact
 - Emitted the completion signal and exited successfully.
-- Left only untracked .gigalphex/ progress files in the smoke repository.
+- Left only untracked .gigaflex/ progress files in the smoke repository.
 ```
 
 ## Optional Regression Checks
@@ -179,51 +179,51 @@ The following already passed historically. Re-run only if related code changed.
 ## 4. Verify Global Initialization and Local `--init`
 
 ```bash
-mkdir -p /tmp/gigalphex-init-check
-cd /tmp/gigalphex-init-check
-PYTHONPATH=/path/to/gigalphex/python python3 -m gigalphex.cli --init
-find .gigalphex -type f | sort
-find ~/.config/gigalphex -type f | sort
+mkdir -p /tmp/gigaflex-init-check
+cd /tmp/gigaflex-init-check
+PYTHONPATH=/path/to/gigaflex/python python3 -m gigaflex.cli --init
+find .gigaflex -type f | sort
+find ~/.config/gigaflex -type f | sort
 ```
 
 Expected files:
 
 ```text
-.gigalphex/config
-~/.config/gigalphex/config
-~/.config/gigalphex/prompts/finalize.txt
-~/.config/gigalphex/prompts/make_plan.txt
-~/.config/gigalphex/prompts/plan_skill.txt
-~/.config/gigalphex/prompts/review.txt
-~/.config/gigalphex/prompts/review_agent.txt
-~/.config/gigalphex/prompts/review_synthesis.txt
-~/.config/gigalphex/prompts/task.txt
+.gigaflex/config
+~/.config/gigaflex/config
+~/.config/gigaflex/prompts/finalize.txt
+~/.config/gigaflex/prompts/make_plan.txt
+~/.config/gigaflex/prompts/plan_skill.txt
+~/.config/gigaflex/prompts/review.txt
+~/.config/gigaflex/prompts/review_agent.txt
+~/.config/gigaflex/prompts/review_synthesis.txt
+~/.config/gigaflex/prompts/task.txt
 ```
 
-The local `.gigalphex/prompts/` directory should not exist yet. Create local
+The local `.gigaflex/prompts/` directory should not exist yet. Create local
 overrides explicitly:
 
 ```bash
-PYTHONPATH=/path/to/gigalphex/python python3 -m gigalphex.cli --init-prompts
+PYTHONPATH=/path/to/gigaflex/python python3 -m gigaflex.cli --init-prompts
 ```
 
 ## 5. Verify `--plan --dry-run`
 
 ```bash
-cd /path/to/gigalphex
-PYTHONPATH=python python3 -m gigalphex.cli --plan "add health check endpoint" --dry-run
+cd /path/to/gigaflex
+PYTHONPATH=python python3 -m gigaflex.cli --plan "add health check endpoint" --dry-run
 ```
 
 Expected:
 
 - Prints the plan-generation prompt.
 - Does not invoke `gigacode`.
-- Prints `progress log: .gigalphex/progress/progress-plan.txt`.
+- Prints `progress log: .gigaflex/progress/progress-plan.txt`.
 
 ## 6. Install the Planning Skill
 
 ```bash
-PYTHONPATH=python python3 -m gigalphex.cli --install-planning-skill
+PYTHONPATH=python python3 -m gigaflex.cli --install-planning-skill
 ```
 
 Expected:
@@ -236,7 +236,7 @@ Expected:
 If this GigaCode version uses another directory:
 
 ```bash
-PYTHONPATH=python python3 -m gigalphex.cli \
+PYTHONPATH=python python3 -m gigaflex.cli \
   --install-planning-skill \
   --skill-dir /actual/gigacode/skills/path
 ```
@@ -244,7 +244,7 @@ PYTHONPATH=python python3 -m gigalphex.cli \
 Persist the discovered path if necessary:
 
 ```ini
-[gigalphex]
+[gigaflex]
 gigacode_skills_dir = /actual/gigacode/skills/path
 ```
 
@@ -256,28 +256,28 @@ terminal.
 From the repository root:
 
 ```bash
-cd /path/to/gigalphex
-PYTHONPATH=python python3 -m gigalphex.cli --plan "add health check endpoint"
+cd /path/to/gigaflex
+PYTHONPATH=python python3 -m gigaflex.cli --plan "add health check endpoint"
 ```
 
 Expected:
 
 - GigaCode opens interactively instead of returning one one-shot response.
-- GigaLphex passes the planning request through `--prompt-interactive`.
+- GigaFlex passes the planning request through `--prompt-interactive`.
 - The `planning` skill inspects the repository and asks focused questions.
 - Creates a file like `docs/plans/YYYYMMDD-add-health-check-endpoint.md`.
 - The file contains a markdown plan.
 - The plan includes `# Plan:`, `## Overview`, `## Context`, and at least one `### Task 1:` section.
 - Task items use checkbox format: `- [ ] ...`.
 - The saved file does not wrap the whole plan in markdown code fences.
-- After exiting GigaCode, GigaLphEx reports the created path and commits it
+- After exiting GigaCode, GigaFlex reports the created path and commits it
   when plan commits are enabled.
 
 If this GigaCode version needs extra flags to launch its TUI, inspect
 `gigacode --help` and configure them:
 
 ```ini
-[gigalphex]
+[gigaflex]
 gigacode_interactive_args = <interactive flags> {prompt} --approval-mode=auto-edit
 ```
 
@@ -290,7 +290,7 @@ Notes:
 ## 8. Verify Quick Plan Generation
 
 ```bash
-PYTHONPATH=python python3 -m gigalphex.cli --plan "add quick health check plan" --quick
+PYTHONPATH=python python3 -m gigaflex.cli --plan "add quick health check plan" --quick
 ```
 
 Expected:
@@ -304,7 +304,7 @@ Expected:
 Run the same command again:
 
 ```bash
-PYTHONPATH=python python3 -m gigalphex.cli --plan "add health check endpoint"
+PYTHONPATH=python python3 -m gigaflex.cli --plan "add health check endpoint"
 ```
 
 Expected:
@@ -324,10 +324,10 @@ Notes:
 From the repository root:
 
 ```bash
-cd /path/to/gigalphex
-PYTHONPATH=python python3 -m gigalphex.cli --init-prompts
-printf 'CUSTOM PLAN PROMPT: {plan_request}\n' > .gigalphex/prompts/make_plan.txt
-PYTHONPATH=python python3 -m gigalphex.cli --plan "demo request" --quick --dry-run
+cd /path/to/gigaflex
+PYTHONPATH=python python3 -m gigaflex.cli --init-prompts
+printf 'CUSTOM PLAN PROMPT: {plan_request}\n' > .gigaflex/prompts/make_plan.txt
+PYTHONPATH=python python3 -m gigaflex.cli --plan "demo request" --quick --dry-run
 ```
 
 Expected:
@@ -347,7 +347,7 @@ Create a minimal local change containing `proposal.md`, `tasks.md`, and one
 delta spec, then run:
 
 ```bash
-PYTHONPATH=/path/to/gigalphex/python python3 -m gigalphex.cli \
+PYTHONPATH=/path/to/gigaflex/python python3 -m gigaflex.cli \
   --openspec openspec/changes/approval-smoke \
   --tasks-only
 ```
@@ -365,7 +365,7 @@ Expected:
 ## Things to Watch Closely
 
 - Does `gigacode` receive the generated prompt through `-p`?
-- Does GigaLphex pass the request through `--prompt-interactive` and keep the TUI open?
+- Does GigaFlex pass the request through `--prompt-interactive` and keep the TUI open?
 - Does the installed `planning` skill create the exact requested plan path?
 - Does `--approval-mode=auto-edit --allowed-tools run_shell_command` avoid
   non-interactive approval failures?

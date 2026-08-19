@@ -12,7 +12,7 @@ from .executor import DEFAULT_RATE_LIMIT_PATTERNS, DEFAULT_TRANSIENT_RETRY_PATTE
 from .prompts import init_prompt_templates, sync_global_prompt_templates
 
 
-GLOBAL_CONFIG_RELATIVE_DIR = Path(".config/gigalphex")
+GLOBAL_CONFIG_RELATIVE_DIR = Path(".config/gigaflex")
 
 
 def global_config_dir() -> Path:
@@ -30,8 +30,8 @@ class Config:
     review_model: Optional[str] = None
     finalize_model: Optional[str] = None
     plans_dir: Path = Path("docs/plans")
-    progress_dir: Path = Path(".gigalphex/progress")
-    prompts_dir: Path = Path(".gigalphex/prompts")
+    progress_dir: Path = Path(".gigaflex/progress")
+    prompts_dir: Path = Path(".gigaflex/prompts")
     default_branch: str = ""
     max_iterations: int = 50
     review_iterations: int = 5
@@ -102,7 +102,7 @@ def load_config(path: Optional[Path] = None) -> Config:
     cfg = Config()
     candidates = [
         global_config_dir() / "config",
-        Path(".gigalphex/config"),
+        Path(".gigaflex/config"),
     ]
     if path is not None:
         candidates.append(path)
@@ -113,7 +113,7 @@ def load_config(path: Optional[Path] = None) -> Config:
     if not read_files:
         return _apply_env(cfg)
 
-    section = parser["gigalphex"] if parser.has_section("gigalphex") else parser["DEFAULT"]
+    section = parser["gigaflex"] if parser.has_section("gigaflex") else parser["DEFAULT"]
     cfg.gigacode_command = section.get("gigacode_command", cfg.gigacode_command)
     if "gigacode_args" in section:
         cfg.gigacode_args = shlex.split(section.get("gigacode_args", ""))
@@ -155,17 +155,17 @@ def load_config(path: Optional[Path] = None) -> Config:
 
 
 def _apply_env(cfg: Config) -> Config:
-    if command := os.getenv("GIGALPHEX_GIGACODE_COMMAND"):
+    if command := os.getenv("GIGAFLEX_GIGACODE_COMMAND"):
         cfg.gigacode_command = command
-    if args := os.getenv("GIGALPHEX_GIGACODE_ARGS"):
+    if args := os.getenv("GIGAFLEX_GIGACODE_ARGS"):
         cfg.gigacode_args = shlex.split(args)
-    if args := os.getenv("GIGALPHEX_GIGACODE_INTERACTIVE_ARGS"):
+    if args := os.getenv("GIGAFLEX_GIGACODE_INTERACTIVE_ARGS"):
         cfg.gigacode_interactive_args = shlex.split(args)
-    if skills_dir := os.getenv("GIGALPHEX_GIGACODE_SKILLS_DIR"):
+    if skills_dir := os.getenv("GIGAFLEX_GIGACODE_SKILLS_DIR"):
         cfg.gigacode_skills_dir = Path(skills_dir).expanduser()
-    if model := os.getenv("GIGALPHEX_TASK_MODEL"):
+    if model := os.getenv("GIGAFLEX_TASK_MODEL"):
         cfg.task_model = model
-    if model := os.getenv("GIGALPHEX_REVIEW_MODEL"):
+    if model := os.getenv("GIGAFLEX_REVIEW_MODEL"):
         cfg.review_model = model
     return cfg
 
@@ -256,7 +256,7 @@ def _with_prompt_after_noninteractive_options(args: list[str]) -> list[str]:
     return [*remaining, *prompt_args]
 
 
-DEFAULT_CONFIG_TEXT = """[gigalphex]
+DEFAULT_CONFIG_TEXT = """[gigaflex]
 # gigacode_command = gigacode
 # gigacode_args = --approval-mode=auto-edit --allowed-tools run_shell_command -p {prompt}
 # gigacode_interactive_args = --prompt-interactive {prompt} --approval-mode=auto-edit
@@ -266,8 +266,8 @@ DEFAULT_CONFIG_TEXT = """[gigalphex]
 # review_model =
 # finalize_model =
 # plans_dir = docs/plans
-# progress_dir = .gigalphex/progress
-# prompts_dir = .gigalphex/prompts
+# progress_dir = .gigaflex/progress
+# prompts_dir = .gigaflex/prompts
 # Legacy explicit review base; leave empty to capture the launch branch and commit.
 # default_branch =
 # max_iterations = 50
@@ -305,12 +305,12 @@ def init_global_prompt_templates() -> list[Path]:
 
 DEFAULT_GITIGNORE_LINES = [
     ".DS_Store",
-    ".gigalphex/progress/",
-    ".gigalphex/worktrees/",
+    ".gigaflex/progress/",
+    ".gigaflex/worktrees/",
 ]
 
 
-def init_project_config(base_dir: Path = Path(".gigalphex")) -> list[Path]:
+def init_project_config(base_dir: Path = Path(".gigaflex")) -> list[Path]:
     base_dir.mkdir(parents=True, exist_ok=True)
     written: list[Path] = []
 
@@ -326,7 +326,7 @@ def init_project_config(base_dir: Path = Path(".gigalphex")) -> list[Path]:
     return written
 
 
-def init_project_prompt_templates(base_dir: Path = Path(".gigalphex")) -> list[Path]:
+def init_project_prompt_templates(base_dir: Path = Path(".gigaflex")) -> list[Path]:
     return init_prompt_templates(base_dir / "prompts")
 
 

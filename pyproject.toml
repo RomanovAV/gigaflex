@@ -1,5 +1,5 @@
 [project]
-name = "gigalphex"
+name = "gigaflex"
 version = "0.1.0"
 description = "Python autonomous plan runner for GigaCode CLI"
 readme = "README.md"
@@ -8,7 +8,7 @@ requires-python = ">=3.9"
 dependencies = []
 
 [project.scripts]
-gigalphex = "gigalphex.cli:main"
+gigaflex = "gigaflex.cli:main"
 
 [build-system]
 requires = ["setuptools>=68"]
@@ -21,7 +21,7 @@ package-dir = {"" = "python"}
 where = ["python"]
 
 [tool.setuptools.package-data]
-gigalphex = [
+gigaflex = [
     "assets/planning/SKILL.md",
-    "assets/superpowers-to-gigalphex/SKILL.md",
+    "assets/superpowers-to-gigaflex/SKILL.md",
 ]

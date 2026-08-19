@@ -9,12 +9,12 @@
   writable checklist and pass proposal, design, and delta specs as read-only
   context. Localized prose-only task groups are tracked with durable completion
   markers.
-- Create gigalphex-compatible plans from a free-form request.
+- Create gigaflex-compatible plans from a free-form request.
 - Commit newly created plan files by default when running inside a git
   repository.
 - Commit completed plan moves after a successful full run.
-- Install `.gitignore` entries for `.DS_Store`, `.gigalphex/progress/`, and
-  `.gigalphex/worktrees/` during project initialization.
+- Install `.gitignore` entries for `.DS_Store`, `.gigaflex/progress/`, and
+  `.gigaflex/worktrees/` during project initialization.
 - Optionally initialize a missing git repository with `--init-git` and commit
   the initial working tree before execution.
 - Run one task section per agent iteration.
@@ -23,7 +23,7 @@
   status file beside each progress log.
 - Record per-attempt timing, model, token usage, retry decisions, and final run
   status in a statistics JSON file.
-- Detect gigalphex completion signals.
+- Detect gigaflex completion signals.
 - Run a review loop after tasks.
 - Run five specialist review agents in parallel from disposable detached
   worktrees built from one ephemeral working-tree snapshot, remove those
@@ -34,7 +34,7 @@
   `review_model`, and `finalize_model`, mapped to GigaCode's `--model` flag.
   Read-only reviewers use `review_model`; review synthesis and fixes use
   `task_model`.
-- Initialize the local `.gigalphex/` config automatically on first real plan
+- Initialize the local `.gigaflex/` config automatically on first real plan
   creation or execution.
 - Initialize editable global config and prompt templates automatically, with
   local project files as a fallback when global storage is not writable.
@@ -76,7 +76,7 @@ If the CLI later needs a subcommand or different flags, the executor boundary
 is `GigaCodeExecutor`, so adapting the invocation should be one local change.
 
 GigaCode model selection is a CLI concern, not a prompt concern. The CLI exposes
-`-m/--model`, so gigalphex adds `--model <name>` to the phase invocation instead
+`-m/--model`, so gigaflex adds `--model <name>` to the phase invocation instead
 of embedding model names in the prompt text.
 
 ## Observed GigaCode behavior
@@ -99,7 +99,7 @@ of embedding model names in the prompt text.
 - GigaCode has administrative CLI subcommands (`mcp`, `extensions`, `auth`,
   `sandbox`, and `hooks`) but no task-execution subcommand. There is also no
   observed JSON/REST API, official Python SDK, or `IN_PROGRESS` signal.
-  `gigalphex` therefore uses the default `gigacode [query..]` command and
+  `gigaflex` therefore uses the default `gigacode [query..]` command and
   treats the CLI process and output stream as the integration boundary.
 
 ## Usage
@@ -107,19 +107,19 @@ of embedding model names in the prompt text.
 Run without installing:
 
 ```bash
-PYTHONPATH=python python3 -m gigalphex.cli docs/plans/my-feature.md
+PYTHONPATH=python python3 -m gigaflex.cli docs/plans/my-feature.md
 ```
 
 Inspect prompts without invoking GigaCode:
 
 ```bash
-PYTHONPATH=python python3 -m gigalphex.cli --dry-run docs/plans/my-feature.md
+PYTHONPATH=python python3 -m gigaflex.cli --dry-run docs/plans/my-feature.md
 ```
 
 Configure command shape:
 
 ```ini
-[gigalphex]
+[gigaflex]
 gigacode_command = gigacode
 gigacode_args = --approval-mode=auto-edit --allowed-tools run_shell_command -p {prompt}
 gigacode_interactive_args = --prompt-interactive {prompt} --approval-mode=auto-edit
@@ -134,23 +134,23 @@ value is retained as a legacy explicit base override, equivalent to supplying
 Create local config:
 
 ```bash
-PYTHONPATH=python python3 -m gigalphex.cli --init
+PYTHONPATH=python python3 -m gigaflex.cli --init
 ```
 
 Global config and prompt templates are created automatically under
-`~/.config/gigalphex/`. When that location is not writable, the CLI creates
-`.gigalphex/config` and `.gigalphex/prompts/` in the current project instead.
+`~/.config/gigaflex/`. When that location is not writable, the CLI creates
+`.gigaflex/config` and `.gigaflex/prompts/` in the current project instead.
 Create local project overrides explicitly when needed:
 
 ```bash
-PYTHONPATH=python python3 -m gigalphex.cli --init-prompts
+PYTHONPATH=python python3 -m gigaflex.cli --init-prompts
 ```
 
 Create a new plan:
 
 ```bash
-PYTHONPATH=python python3 -m gigalphex.cli --install-planning-skill
-PYTHONPATH=python python3 -m gigalphex.cli --plan "add user authentication"
+PYTHONPATH=python python3 -m gigaflex.cli --install-planning-skill
+PYTHONPATH=python python3 -m gigaflex.cli --plan "add user authentication"
 ```
 
 With a terminal attached, plan creation invokes the installed GigaCode

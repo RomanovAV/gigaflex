@@ -1,11 +1,11 @@
 ---
-name: superpowers-to-gigalphex
-description: Convert a Superpowers design spec or implementation plan into a gigalphex-compatible markdown plan. Use when the user asks to migrate or convert docs/superpowers/specs, docs/superpowers/plans, superpowers:brainstorming output, or superpowers:writing-plans output for execution by gigalphex.
+name: superpowers-to-gigaflex
+description: Convert a Superpowers design spec or implementation plan into a gigaflex-compatible markdown plan. Use when the user asks to migrate or convert docs/superpowers/specs, docs/superpowers/plans, superpowers:brainstorming output, or superpowers:writing-plans output for execution by gigaflex.
 ---
 
-# Convert Superpowers Work Into GigaLphex Plans
+# Convert Superpowers Work Into GigaFlex Plans
 
-Create an executable markdown plan for `gigalphex`. Do not implement the plan,
+Create an executable markdown plan for `gigaflex`. Do not implement the plan,
 edit product code, create branches, or start an execution loop.
 
 ## Inputs
@@ -24,8 +24,8 @@ edit product code, create branches, or start an execution loop.
    build/test configuration, files named by the source, and nearby existing
    patterns.
 3. Determine the source type:
-   - Superpowers spec/design: synthesize a fresh gigalphex implementation plan.
-   - Superpowers implementation plan: normalize it into gigalphex format,
+   - Superpowers spec/design: synthesize a fresh gigaflex implementation plan.
+   - Superpowers implementation plan: normalize it into gigaflex format,
      preserving requirements while removing Superpowers execution mechanics.
 4. Write the converted plan to the user-specified destination, or to a
    non-colliding file under `docs/plans/YYYYMMDD-<short-title>.md`.
@@ -39,7 +39,7 @@ edit product code, create branches, or start an execution loop.
   `superpowers:subagent-driven-development`, `superpowers:executing-plans`,
   fresh-subagent dispatch, task-reviewer gates, `.superpowers/sdd/progress.md`,
   finishing-branch workflow, and explicit Superpowers ledger updates.
-- Do not include a commit step as a task checkbox. GigaLphex requires each task
+- Do not include a commit step as a task checkbox. GigaFlex requires each task
   session to commit completed implementation and plan updates itself.
 - Remove process-only test-first sequencing such as separate RED/GREEN
   micro-steps. Preserve the required automated test coverage and validation
