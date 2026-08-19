@@ -770,6 +770,8 @@ def main(argv: Optional[list[str]] = None) -> int:
         branch=git.current_branch() if not args.dry_run and git.is_repo() else "",
         tasks_enabled=not args.review,
         review_enabled=not args.tasks_only,
+        review_iterations=cfg.review_iterations,
+        parallel_review=not args.no_parallel_review,
         finalize_enabled=cfg.finalize_enabled and not args.tasks_only,
     )
     if not args.dry_run:

@@ -7,6 +7,7 @@ import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "python"))
 
+from gigalphex.dashboard import ProgressDashboard
 from gigalphex.executor import ExecResult, GigaCodeExecutor
 from gigalphex.git import GitService, ReviewWorktreeManager
 from gigalphex.progress import ProgressLog
@@ -70,6 +71,14 @@ class RunnerTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             executor = FakeExecutor()
+            dashboard = ProgressDashboard(
+                tmp_path / "status.json",
+                tmp_path / "status.html",
+                name="review",
+                plan_file=None,
+                review_iterations=5,
+            )
+            dashboard.start()
             runner = Runner(
                 RunOptions(
                     plan_file=None,
@@ -80,6 +89,7 @@ class RunnerTest(unittest.TestCase):
                 ),
                 executor,  # type: ignore[arg-type]
                 ProgressLog(tmp_path / "progress.txt"),
+                dashboard=dashboard,
             )
 
             runner.run()
@@ -92,6 +102,12 @@ class RunnerTest(unittest.TestCase):
             self.assertEqual(0, len(executor.single_prompts))
             progress = (tmp_path / "progress.txt").read_text(encoding="utf-8")
             self.assertIn("event=no_findings action=skip_synthesis", progress)
+            self.assertEqual("passed", dashboard.state["review"]["status"])
+            self.assertEqual(1, dashboard.state["review"]["current_attempt"])
+            self.assertEqual(
+                "passed",
+                dashboard.state["review"]["attempts"][0]["status"],
+            )
 
     def test_clean_review_does_not_invoke_synthesis_executor(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

@@ -242,6 +242,12 @@ class Runner:
 
         context = self._context()
         for iteration in range(1, self.options.review_iterations + 1):
+            if self.dashboard is not None:
+                self.dashboard.review_attempt_started(
+                    iteration,
+                    self.options.review_iterations,
+                    parallel=False,
+                )
             self.log.section(f"review iteration {iteration}")
             head_before = self._git().head_commit()
             result = self._run_single_review_agent(
@@ -260,13 +266,23 @@ class Runner:
                 "review",
                 result,
             )
-            if not identify_review_findings({"review": structured_output}):
+            identified = identify_review_findings({"review": structured_output})
+            if not identified:
                 self.log.diagnostic(
                     "session=review event=no_findings action=skip_synthesis"
                 )
+                if self.dashboard is not None:
+                    self.dashboard.review_attempt_finished(
+                        iteration,
+                        "passed",
+                        findings=0,
+                        message=f"Review passed on attempt {iteration}: no findings",
+                    )
                 return
 
             self.log.section("review synthesis")
+            if self.dashboard is not None:
+                self.dashboard.review_synthesis_started(iteration, len(identified))
             head_before = self._git().head_commit()
             synthesis = self.synthesis_executor.run(
                 self._render_review_synthesis_prompt({"review": structured_output}, context)
@@ -277,13 +293,33 @@ class Runner:
             if synthesis.signal == TASK_FAILED:
                 raise RuntimeError("review failed")
             if self._accept_review_synthesis_or_raise(synthesis, {"review": structured_output}):
+                if self.dashboard is not None:
+                    self.dashboard.review_attempt_finished(
+                        iteration,
+                        "passed",
+                        findings=len(identified),
+                        message=f"Review passed on attempt {iteration}",
+                    )
                 return
+            if self.dashboard is not None:
+                self.dashboard.review_attempt_finished(
+                    iteration,
+                    "needs_another_pass",
+                    findings=len(identified),
+                    message=f"Review attempt {iteration} requires another pass",
+                )
             time.sleep(self.options.delay_seconds)
         raise RuntimeError(f"max review iterations reached: {self.options.review_iterations}")
 
     def run_parallel_review(self) -> None:
         context = self._context()
         for iteration in range(1, self.options.review_iterations + 1):
+            if self.dashboard is not None:
+                self.dashboard.review_attempt_started(
+                    iteration,
+                    self.options.review_iterations,
+                    parallel=True,
+                )
             self.log.section(f"parallel review iteration {iteration}")
             head_before = self._git().head_commit()
             results = self._run_parallel_review_agents()
@@ -299,13 +335,23 @@ class Runner:
                     raise RuntimeError(describe_failure(f"gigacode review agent {name}", result))
                 findings[name] = self._structured_review_output(name, result)
 
-            if not identify_review_findings(findings):
+            identified = identify_review_findings(findings)
+            if not identified:
                 self.log.diagnostic(
                     "session=review event=no_findings action=skip_synthesis"
                 )
+                if self.dashboard is not None:
+                    self.dashboard.review_attempt_finished(
+                        iteration,
+                        "passed",
+                        findings=0,
+                        message=f"Review passed on attempt {iteration}: no findings",
+                    )
                 return
 
             self.log.section("review synthesis")
+            if self.dashboard is not None:
+                self.dashboard.review_synthesis_started(iteration, len(identified))
             head_before = self._git().head_commit()
             synthesis = self.synthesis_executor.run(
                 self._render_review_synthesis_prompt(findings, context)
@@ -316,7 +362,21 @@ class Runner:
             if synthesis.signal == TASK_FAILED:
                 raise RuntimeError("review failed")
             if self._accept_review_synthesis_or_raise(synthesis, findings):
+                if self.dashboard is not None:
+                    self.dashboard.review_attempt_finished(
+                        iteration,
+                        "passed",
+                        findings=len(identified),
+                        message=f"Review passed on attempt {iteration}",
+                    )
                 return
+            if self.dashboard is not None:
+                self.dashboard.review_attempt_finished(
+                    iteration,
+                    "needs_another_pass",
+                    findings=len(identified),
+                    message=f"Review attempt {iteration} requires another pass",
+                )
             time.sleep(self.options.delay_seconds)
         raise RuntimeError(f"max review iterations reached: {self.options.review_iterations}")
 

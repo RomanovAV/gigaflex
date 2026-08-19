@@ -68,8 +68,9 @@ progress log:
 The CLI prints the absolute dashboard path when the run starts. Open the HTML
 file in any browser; it is self-contained, needs no HTTP server, and refreshes
 while the run is active. It shows task checklist progress, the current phase,
-parallel review sessions, retries, failures, elapsed time, and known token
-usage. The JSON file exposes the same state for future integrations. The full
+the current review status and pass history, parallel review sessions, executor
+retries, failures, elapsed time, and known token usage. The JSON file exposes
+the same state for future integrations. The full
 agent transcript and executor diagnostics remain in `progress-my-feature.txt`.
 
 Run a standard local OpenSpec `spec-driven` change by passing its change

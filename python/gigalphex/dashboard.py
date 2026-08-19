@@ -35,6 +35,8 @@ class ProgressDashboard:
         branch: str = "",
         tasks_enabled: bool = True,
         review_enabled: bool = True,
+        review_iterations: int = 0,
+        parallel_review: bool = True,
         finalize_enabled: bool = True,
     ) -> None:
         self.json_path = json_path
@@ -45,7 +47,7 @@ class ProgressDashboard:
         self._last_activity_write: dict[str, float] = {}
         now = _timestamp()
         self._state: dict[str, object] = {
-            "version": 1,
+            "version": 2,
             "name": name,
             "title": name,
             "status": "running",
@@ -77,6 +79,16 @@ class ProgressDashboard:
             ],
             "tasks": [],
             "current_task": None,
+            "review": {
+                "enabled": review_enabled,
+                "mode": "parallel" if parallel_review else "single",
+                "status": "pending" if review_enabled else "skipped",
+                "current_attempt": 0,
+                "max_attempts": max(0, review_iterations),
+                "stage": "",
+                "findings": None,
+                "attempts": [],
+            },
             "sessions": {},
             "usage": {
                 "input_tokens": 0,
@@ -116,6 +128,89 @@ class ProgressDashboard:
         with self._lock:
             self._refresh_plan_locked()
             self._state["current_task"] = None
+            self._write_locked()
+
+    def review_attempt_started(
+        self,
+        iteration: int,
+        max_iterations: int,
+        *,
+        parallel: bool,
+    ) -> None:
+        with self._lock:
+            review = self._review_state_locked()
+            review["enabled"] = True
+            review["mode"] = "parallel" if parallel else "single"
+            review["status"] = "running"
+            review["current_attempt"] = iteration
+            review["max_attempts"] = max(0, max_iterations)
+            review["stage"] = "reviewers" if parallel else "reviewer"
+            review["findings"] = None
+            attempts = review["attempts"]
+            assert isinstance(attempts, list)
+            attempts.append(
+                {
+                    "number": iteration,
+                    "status": "running",
+                    "stage": review["stage"],
+                    "findings": None,
+                    "message": "",
+                    "started_at": _timestamp(),
+                    "completed_at": None,
+                }
+            )
+            reviewer_label = "specialist reviewers" if parallel else "reviewer"
+            self._state["message"] = (
+                f"Review attempt {iteration} of {max_iterations}: running {reviewer_label}"
+            )
+            self._write_locked()
+
+    def review_synthesis_started(self, iteration: int, findings: int) -> None:
+        with self._lock:
+            review = self._review_state_locked()
+            review["status"] = "running"
+            review["stage"] = "synthesis"
+            review["findings"] = max(0, findings)
+            attempt = self._review_attempt_locked(review, iteration)
+            if attempt is not None:
+                attempt["stage"] = "synthesis"
+                attempt["findings"] = max(0, findings)
+            self._state["message"] = (
+                f"Review attempt {iteration}: synthesizing {findings} "
+                f"{'finding' if findings == 1 else 'findings'}"
+            )
+            self._write_locked()
+
+    def review_attempt_finished(
+        self,
+        iteration: int,
+        status: str,
+        *,
+        findings: Optional[int] = None,
+        message: str = "",
+    ) -> None:
+        if status not in {"passed", "needs_another_pass"}:
+            raise ValueError(f"unsupported review attempt status: {status}")
+        with self._lock:
+            review = self._review_state_locked()
+            review["status"] = status
+            review["current_attempt"] = iteration
+            review["stage"] = "complete" if status == "passed" else "waiting_retry"
+            if findings is not None:
+                review["findings"] = max(0, findings)
+            attempt = self._review_attempt_locked(review, iteration)
+            if attempt is not None:
+                attempt["status"] = status
+                attempt["stage"] = review["stage"]
+                if findings is not None:
+                    attempt["findings"] = max(0, findings)
+                attempt["message"] = message
+                attempt["completed_at"] = _timestamp()
+            self._state["message"] = message or (
+                f"Review passed on attempt {iteration}"
+                if status == "passed"
+                else f"Review attempt {iteration} requested another pass"
+            )
             self._write_locked()
 
     def executor_event(
@@ -233,6 +328,7 @@ class ProgressDashboard:
             self._state["error"] = error
             self._state["completed_at"] = _timestamp()
             self._mark_current_phase_failed_locked()
+            self._mark_current_review_failed_locked("failed", error)
             self._write_locked()
 
     def interrupt(self) -> None:
@@ -241,6 +337,7 @@ class ProgressDashboard:
             self._state["message"] = "Run interrupted"
             self._state["completed_at"] = _timestamp()
             self._mark_current_phase_failed_locked()
+            self._mark_current_review_failed_locked("interrupted", "Run interrupted")
             self._write_locked()
 
     @property
@@ -281,6 +378,36 @@ class ProgressDashboard:
         phase = self._state.get("phase")
         if isinstance(phase, str):
             self._set_phase_status_locked(phase, "failed")
+
+    def _review_state_locked(self) -> dict[str, object]:
+        review = self._state["review"]
+        assert isinstance(review, dict)
+        return review
+
+    def _review_attempt_locked(
+        self,
+        review: dict[str, object],
+        iteration: int,
+    ) -> Optional[dict[str, object]]:
+        attempts = review["attempts"]
+        assert isinstance(attempts, list)
+        for item in reversed(attempts):
+            if isinstance(item, dict) and item.get("number") == iteration:
+                return item
+        return None
+
+    def _mark_current_review_failed_locked(self, status: str, message: str) -> None:
+        if self._state.get("phase") != "review":
+            return
+        review = self._review_state_locked()
+        review["status"] = status
+        review["stage"] = "complete"
+        iteration = _integer_or_none(review.get("current_attempt")) or 0
+        attempt = self._review_attempt_locked(review, iteration)
+        if attempt is not None and attempt.get("status") == "running":
+            attempt["status"] = status
+            attempt["message"] = message
+            attempt["completed_at"] = _timestamp()
 
     def _add_usage_locked(self, fields: dict[str, object]) -> None:
         total = _integer_or_none(fields.get("total_tokens"))
@@ -345,6 +472,7 @@ def _render_html(state: dict[str, object]) -> str:
     phases = state.get("phases", [])
     tasks = state.get("tasks", [])
     sessions = state.get("sessions", {})
+    review = state.get("review", {})
     usage = state.get("usage", {})
     current = state.get("current_task")
 
@@ -363,6 +491,7 @@ def _render_html(state: dict[str, object]) -> str:
         for item in sessions.values()
         if isinstance(item, dict)
     ) or '<p class="empty">Waiting for GigaCode…</p>'
+    review_html = _review_html(review) if isinstance(review, dict) else ""
     known_calls = usage.get("known_calls", 0) if isinstance(usage, dict) else 0
     token_text = (
         f"{int(usage.get('total_tokens', 0)):,}" if isinstance(usage, dict) and known_calls else "—"
@@ -395,14 +524,27 @@ def _render_html(state: dict[str, object]) -> str:
     .status {{ display:inline-flex; align-items:center; gap:9px; padding:9px 13px; border:1px solid var(--line); border-radius:999px; background:#101419; font-weight:700; white-space:nowrap; }}
     .dot {{ width:9px; height:9px; border-radius:50%; background:var(--muted); }}
     .status-running .dot,.state-running .dot {{ background:var(--blue); box-shadow:0 0 0 5px #79b8ff18; }}
-    .status-success .dot,.state-completed .dot {{ background:var(--accent); }}
-    .status-failed .dot,.status-interrupted .dot,.state-failed .dot {{ background:var(--bad); }}
+    .status-success .dot,.state-completed .dot,.state-passed .dot {{ background:var(--accent); }}
+    .state-needs_another_pass .dot {{ background:var(--warn); }}
+    .status-failed .dot,.status-interrupted .dot,.state-failed .dot,.state-interrupted .dot {{ background:var(--bad); }}
     .phases {{ display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin-bottom:18px; }}
     .phase,.panel {{ border:1px solid var(--line); background:linear-gradient(180deg,#14191f,#101419); border-radius:16px; }}
     .phase {{ padding:14px 16px; display:flex; align-items:center; gap:11px; }}
     .phase strong {{ display:block; }} .phase small {{ color:var(--muted); text-transform:capitalize; }}
     .grid {{ display:grid; grid-template-columns:minmax(0,1.55fr) minmax(280px,.85fr); gap:18px; }}
     .panel {{ padding:22px; }}
+    .review-panel {{ margin-bottom:18px; }}
+    .review-summary {{ display:flex; align-items:flex-start; justify-content:space-between; gap:18px; }}
+    .review-status {{ display:flex; align-items:center; gap:10px; font-weight:750; }}
+    .review-meta {{ color:var(--muted); font-size:13px; text-align:right; }}
+    .review-attempts {{ display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:9px; margin-top:16px; }}
+    .review-attempt {{ padding:12px 13px; border:1px solid var(--line); border-radius:12px; background:#0d1116; }}
+    .review-attempt.state-passed {{ border-color:#7ce2b155; }}
+    .review-attempt.state-needs_another_pass {{ border-color:#f6c17755; }}
+    .review-attempt.state-failed,.review-attempt.state-interrupted {{ border-color:#ff7b7255; }}
+    .review-attempt-head {{ display:flex; justify-content:space-between; gap:10px; font-weight:700; }}
+    .review-attempt small {{ display:block; margin-top:4px; color:var(--muted); }}
+    .review-message {{ margin-top:5px; color:#b9c4ce; font-size:12px; }}
     h2 {{ margin:0 0 17px; font-size:17px; letter-spacing:-.01em; }}
     .task {{ padding:15px 0; border-top:1px solid var(--line); }} .task:first-of-type {{ border-top:0; padding-top:0; }}
     .task-head {{ display:flex; gap:11px; align-items:flex-start; }}
@@ -416,7 +558,7 @@ def _render_html(state: dict[str, object]) -> str:
     .metrics {{ display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:18px; }}
     .metric {{ background:#0d1116; border:1px solid var(--line); border-radius:12px; padding:13px; }} .metric b {{ display:block; font-size:20px; }} .metric span {{ color:var(--muted); font-size:12px; }}
     footer {{ margin-top:18px; display:flex; flex-wrap:wrap; gap:8px 22px; color:var(--muted); font-size:12px; }} footer code {{ color:#b9c4ce; overflow-wrap:anywhere; }}
-    @media (max-width:760px) {{ main {{ padding-top:28px; }} header {{ display:block; }} .status {{ margin-top:16px; }} .grid {{ grid-template-columns:1fr; }} .phases {{ grid-template-columns:1fr; }} }}
+    @media (max-width:760px) {{ main {{ padding-top:28px; }} header {{ display:block; }} .status {{ margin-top:16px; }} .grid {{ grid-template-columns:1fr; }} .phases {{ grid-template-columns:1fr; }} .review-summary {{ display:block; }} .review-meta {{ margin-top:5px; text-align:left; }} }}
     @media (prefers-reduced-motion:no-preference) {{ .status-running .dot {{ animation:pulse 1.8s ease-in-out infinite; }} @keyframes pulse {{ 50% {{ opacity:.42; }} }} }}
   </style>
 </head>
@@ -427,6 +569,7 @@ def _render_html(state: dict[str, object]) -> str:
       <div class="status status-{html.escape(status)}"><span class="dot"></span>{html.escape(status_label)} · <span id="elapsed">—</span></div>
     </header>
     <section class="phases" aria-label="Run phases">{phase_html}</section>
+    {review_html}
     <div class="grid">
       <section class="panel"><h2>Plan progress</h2>{task_html}</section>
       <aside class="panel"><h2>Active sessions</h2>{session_html}<div class="metrics"><div class="metric"><b>{token_text}</b><span>tokens</span></div><div class="metric"><b>{sum(1 for item in tasks if isinstance(item, dict) and item.get('status') == 'completed')} / {len(tasks)}</b><span>tasks complete</span></div></div></aside>
@@ -478,6 +621,91 @@ def _task_html(item: dict[str, object], current: object) -> str:
         f'<div class="task-title">{html.escape(str(item.get("number", "")))}. {html.escape(str(item.get("title", "")))}</div>'
         f'<div class="task-meta">{completed} of {total} checklist items</div></div></div>'
         f'{item_list}</article>'
+    )
+
+
+def _review_html(review: dict[str, object]) -> str:
+    if not review.get("enabled"):
+        return ""
+    status = str(review.get("status", "pending"))
+    status_label = {
+        "pending": "Pending",
+        "running": "In progress",
+        "passed": "Passed",
+        "needs_another_pass": "Another pass required",
+        "failed": "Failed",
+        "interrupted": "Interrupted",
+    }.get(status, status.replace("_", " ").title())
+    stage = str(review.get("stage", ""))
+    stage_label = {
+        "reviewers": "Specialist reviewers",
+        "reviewer": "Reviewer",
+        "synthesis": "Synthesis",
+        "waiting_retry": "Next pass queued",
+        "complete": "Complete",
+    }.get(stage, stage.replace("_", " ").title())
+    current = _integer_or_none(review.get("current_attempt")) or 0
+    maximum = _integer_or_none(review.get("max_attempts")) or 0
+    mode = "Parallel" if review.get("mode") == "parallel" else "Single reviewer"
+    attempt_progress = (
+        f"Attempt {current} of {maximum}"
+        if current and maximum
+        else (f"Up to {maximum} attempts" if maximum else "Not started")
+    )
+    findings = _integer_or_none(review.get("findings"))
+    finding_text = (
+        f" · {findings} {'finding' if findings == 1 else 'findings'}"
+        if findings is not None
+        else ""
+    )
+    attempts = review.get("attempts", [])
+    attempts_html = "".join(
+        _review_attempt_html(item)
+        for item in attempts
+        if isinstance(item, dict)
+    )
+    if not attempts_html:
+        attempts_html = '<p class="empty">Review has not started yet.</p>'
+    return (
+        '<section class="panel review-panel"><h2>Review status</h2>'
+        '<div class="review-summary">'
+        f'<div class="review-status state-{html.escape(status)}"><span class="dot"></span>{html.escape(status_label)}</div>'
+        f'<div class="review-meta">{html.escape(attempt_progress)} · {html.escape(mode)}'
+        f'{finding_text}<br>{html.escape(stage_label)}</div></div>'
+        f'<div class="review-attempts">{attempts_html}</div></section>'
+    )
+
+
+def _review_attempt_html(item: dict[str, object]) -> str:
+    status = str(item.get("status", "running"))
+    status_label = {
+        "running": "In progress",
+        "passed": "Passed",
+        "needs_another_pass": "Another pass required",
+        "failed": "Failed",
+        "interrupted": "Interrupted",
+    }.get(status, status.replace("_", " ").title())
+    stage = str(item.get("stage", ""))
+    stage_label = {
+        "reviewers": "Specialist reviewers",
+        "reviewer": "Reviewer",
+        "synthesis": "Synthesis",
+        "waiting_retry": "Complete",
+        "complete": "Complete",
+    }.get(stage, stage.replace("_", " ").title())
+    findings = _integer_or_none(item.get("findings"))
+    finding_text = (
+        f" · {findings} {'finding' if findings == 1 else 'findings'}"
+        if findings is not None
+        else ""
+    )
+    message = html.escape(str(item.get("message", "")))
+    message_html = f'<div class="review-message">{message}</div>' if message else ""
+    return (
+        f'<div class="review-attempt state-{html.escape(status)}">'
+        f'<div class="review-attempt-head"><span>Attempt {html.escape(str(item.get("number", "")))}</span><span>{html.escape(status_label)}</span></div>'
+        f'<small>{html.escape(stage_label)}{finding_text}</small>'
+        f'{message_html}</div>'
     )
 
 

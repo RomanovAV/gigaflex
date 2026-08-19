@@ -109,14 +109,62 @@ class ProgressDashboardTest(unittest.TestCase):
             )
             dashboard.start()
             dashboard.phase_started("review")
+            dashboard.review_attempt_started(1, 3, parallel=True)
             dashboard.fail("review output was invalid")
 
             self.assertEqual("failed", dashboard.state["status"])
             self.assertEqual("failed", dashboard.state["phases"][1]["status"])
+            self.assertEqual("failed", dashboard.state["review"]["status"])
+            self.assertEqual(
+                "failed",
+                dashboard.state["review"]["attempts"][0]["status"],
+            )
             self.assertIn(
                 "review output was invalid",
                 (root / "status.html").read_text(encoding="utf-8"),
             )
+
+    def test_tracks_review_status_and_attempt_history(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            dashboard = ProgressDashboard(
+                root / "status.json",
+                root / "status.html",
+                name="review",
+                plan_file=None,
+                review_iterations=3,
+            )
+            dashboard.start()
+            dashboard.phase_started("review")
+            dashboard.review_attempt_started(1, 3, parallel=True)
+            dashboard.review_synthesis_started(1, 2)
+            dashboard.review_attempt_finished(
+                1,
+                "needs_another_pass",
+                findings=2,
+                message="Fixes applied; checking again",
+            )
+            dashboard.review_attempt_started(2, 3, parallel=True)
+            dashboard.review_attempt_finished(
+                2,
+                "passed",
+                findings=0,
+                message="No findings remain",
+            )
+
+            review = dashboard.state["review"]
+            page = (root / "status.html").read_text(encoding="utf-8")
+            self.assertEqual("passed", review["status"])
+            self.assertEqual(2, review["current_attempt"])
+            self.assertEqual(3, review["max_attempts"])
+            self.assertEqual(
+                ["needs_another_pass", "passed"],
+                [attempt["status"] for attempt in review["attempts"]],
+            )
+            self.assertIn("Review status", page)
+            self.assertIn("Attempt 2 of 3", page)
+            self.assertIn("Another pass required", page)
+            self.assertIn("No findings remain", page)
 
     def test_dashboard_paths_follow_progress_name(self) -> None:
         self.assertEqual(
