@@ -43,6 +43,9 @@ from .signals import (
 from .stats import statistics_path
 
 
+CORE_REVIEW_AGENTS = ("quality", "implementation")
+
+
 @dataclass
 class RunOptions:
     plan_file: Optional[Path]
@@ -313,6 +316,8 @@ class Runner:
 
     def run_parallel_review(self) -> None:
         context = self._context()
+        selected_agents = tuple(REVIEW_AGENTS)
+        agents_with_findings: set[str] = set()
         for iteration in range(1, self.options.review_iterations + 1):
             if self.dashboard is not None:
                 self.dashboard.review_attempt_started(
@@ -321,11 +326,15 @@ class Runner:
                     parallel=True,
                 )
             self.log.section(f"parallel review iteration {iteration}")
+            self.log.diagnostic(
+                "session=review event=agents_selected "
+                f"iteration={iteration} agents={','.join(selected_agents)!r}"
+            )
             head_before = self._git().head_commit()
-            results = self._run_parallel_review_agents()
+            results = self._run_parallel_review_agents(selected_agents)
             self._prefix_new_commits(head_before, "parallel review")
             findings: dict[str, str] = {}
-            for name in REVIEW_AGENTS:
+            for name in selected_agents:
                 result = results[name]
                 self.log.section(f"review agent: {name}")
                 self.log.write(result.output)
@@ -336,6 +345,7 @@ class Runner:
                 findings[name] = self._structured_review_output(name, result)
 
             identified = identify_review_findings(findings)
+            agents_with_findings.update(item.agent for item in identified)
             if not identified:
                 self.log.diagnostic(
                     "session=review event=no_findings action=skip_synthesis"
@@ -377,6 +387,11 @@ class Runner:
                     findings=len(identified),
                     message=f"Review attempt {iteration} requires another pass",
                 )
+            selected_agents = tuple(
+                name
+                for name in REVIEW_AGENTS
+                if name in CORE_REVIEW_AGENTS or name in agents_with_findings
+            )
             time.sleep(self.options.delay_seconds)
         raise RuntimeError(f"max review iterations reached: {self.options.review_iterations}")
 
@@ -883,7 +898,11 @@ class Runner:
                 cwd=worktree,
             )
 
-    def _run_parallel_review_agents(self) -> dict[str, ExecResult]:
+    def _run_parallel_review_agents(
+        self,
+        agent_names: tuple[str, ...],
+    ) -> dict[str, ExecResult]:
+        agents = {name: REVIEW_AGENTS[name] for name in agent_names}
         if self.review_worktrees is None:
             context = self._context()
             prompts = {
@@ -893,11 +912,11 @@ class Runner:
                     focus,
                     context,
                 )
-                for name, focus in REVIEW_AGENTS.items()
+                for name, focus in agents.items()
             }
             return self.review_agent_executor.run_batch(prompts)
 
-        with self.review_worktrees.create(REVIEW_AGENTS) as worktrees:
+        with self.review_worktrees.create(agents) as worktrees:
             prompts = {
                 name: render_review_agent_prompt(
                     self.options.prompts.review_agent,
@@ -908,7 +927,7 @@ class Runner:
                         worktrees.repo_root,
                     ),
                 )
-                for name, focus in REVIEW_AGENTS.items()
+                for name, focus in agents.items()
             }
             return self.review_agent_executor.run_batch(
                 prompts,

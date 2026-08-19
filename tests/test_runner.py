@@ -4,6 +4,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import unittest.mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "python"))
 
@@ -168,6 +169,66 @@ class RunnerTest(unittest.TestCase):
             progress = (tmp_path / "progress.txt").read_text(encoding="utf-8")
             self.assertIn("[WARN] quality", progress)
             self.assertIn("event=no_findings action=skip_synthesis", progress)
+
+    def test_followup_review_keeps_core_agents_and_agents_with_earlier_findings(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+
+            class RoundReviewExecutor(FakeExecutor):
+                def run_batch(self, prompts):
+                    round_number = len(self.batch_prompts)
+                    self.batch_prompts.append(prompts)
+                    finding_agent = {
+                        0: "documentation",
+                        1: "quality",
+                    }.get(round_number)
+                    return {
+                        name: ExecResult(
+                            output=(
+                                VALID_REVIEW_FINDING
+                                if name == finding_agent
+                                else "NO FINDINGS\n"
+                            ),
+                            returncode=0,
+                        )
+                        for name in prompts
+                    }
+
+            review_executor = RoundReviewExecutor()
+            synthesis_executor = CallbackExecutor(
+                lambda _prompt: ExecResult(
+                    output=synthesis_decision("F001", "fixed"),
+                    returncode=0,
+                )
+            )
+            runner = Runner(
+                RunOptions(
+                    plan_file=None,
+                    progress_file=tmp_path / "progress.txt",
+                    review_only=True,
+                    parallel_review=True,
+                    finalize_enabled=False,
+                    review_iterations=3,
+                    delay_seconds=0,
+                ),
+                review_executor,  # type: ignore[arg-type]
+                ProgressLog(tmp_path / "progress.txt"),
+                synthesis_executor=synthesis_executor,  # type: ignore[arg-type]
+                review_agent_executor=review_executor,  # type: ignore[arg-type]
+            )
+
+            runner.run_review()
+
+            self.assertEqual(3, len(review_executor.batch_prompts))
+            self.assertEqual(set(REVIEW_AGENTS), set(review_executor.batch_prompts[0]))
+            expected_followup = {"quality", "implementation", "documentation"}
+            self.assertEqual(expected_followup, set(review_executor.batch_prompts[1]))
+            self.assertEqual(expected_followup, set(review_executor.batch_prompts[2]))
+            progress = (tmp_path / "progress.txt").read_text(encoding="utf-8")
+            self.assertIn(
+                "iteration=2 agents='quality,implementation,documentation'",
+                progress,
+            )
 
     def test_single_clean_review_skips_synthesis(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

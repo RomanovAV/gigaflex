@@ -21,7 +21,9 @@ This is a small standalone rewrite of the useful ralphex core:
 - detect gigaflex completion signals
 - run review and a default finalize pass
 - run five specialist review agents in parallel in disposable detached
-  worktrees, then synthesize/fix findings in the main worktree
+  worktrees, then synthesize/fix findings in the main worktree; follow-up
+  passes always run quality and implementation plus every specialist that
+  found an issue earlier in the review run
 - compare the accumulated change against the immutable commit captured at the
   start of the run instead of auditing the whole repository from scratch
 - create/switch a git branch from the plan filename
@@ -90,12 +92,14 @@ agent as read-only context. Each `## N. ...` group in `tasks.md` is one agent
 iteration and one commit. Branch and progress names come from the change
 directory rather than the generic `tasks.md` filename.
 
-After every task group is complete, the five specialist reviewers inspect the
-accumulated change from the immutable base commit captured at launch through
-the current result. They start from the full `base...HEAD` diff, read changed
-files in context, and may inspect directly related code or tests, but they do
-not perform an unrelated repository-wide audit. Confirmed findings go through
-the scoped synthesis stage, followed by the default finalize pass.
+After every task group is complete, the first review pass uses five specialist
+reviewers to inspect the accumulated change from the immutable base commit
+captured at launch through the current result. They start from the full
+`base...HEAD` diff, read changed files in context, and may inspect directly
+related code or tests, but they do not perform an unrelated repository-wide
+audit. Confirmed findings go through the scoped synthesis stage. Follow-up
+passes always run `quality` and `implementation`, plus every specialist that
+reported a finding earlier in the review run, before the default finalize pass.
 
 GigaFlex invokes the configured GigaCode CLI in the target workspace for every
 phase. Existing team skills, project rules, allowed tools, and GigaCode settings
@@ -343,9 +347,10 @@ PYTHONPATH=python python3 -m unittest discover -s tests
 Review behavior:
 
 - default: parallel review with `quality`, `implementation`, `testing`,
-  `simplification`, and `documentation` agents
-- the same five agents adapt their focus to the actual changed deliverables;
-  they do not fan out into a second analytics-specific agent set
+  `simplification`, and `documentation` agents on the first pass
+- follow-up passes always run `quality` and `implementation`, plus every
+  specialist that reported a finding in any earlier pass of the current review
+  run
 - implementation review always verifies that the requested result was actually
   produced, whether the deliverable is code, data, analysis, documentation, or
   a mixture
