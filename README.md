@@ -2,6 +2,9 @@
 
 Python autonomous OpenSpec change and plan runner for GigaCode CLI.
 
+For a compact LLM-oriented project reference, see
+[`gigaflex-llms.txt`](gigaflex-llms.txt).
+
 OpenSpec is the primary workflow: the change defines the contract, GigaFlex
 executes one `tasks.md` group at a time, and the completed change passes an
 isolated review and finalize gate before the owner archives it.

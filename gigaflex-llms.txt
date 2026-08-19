@@ -1,0 +1,434 @@
+# gigaflex
+
+Autonomous OpenSpec change and markdown plan runner for GigaCode CLI. GigaFlex
+executes one task group per fresh GigaCode session, requires a verifiable task
+commit, runs isolated review passes, synthesizes confirmed findings, and
+performs a final validation pass.
+
+**GitHub:** https://github.com/RomanovAV/gigaflex
+
+GigaFlex is a standalone Python project inspired by the useful orchestration
+core of ralphex. It is not the ralphex CLI, a wrapper around ralphex, or a
+drop-in-compatible distribution. GigaFlex uses GigaCode as its execution
+environment and has its own commands, configuration, prompts, signals, and
+runtime directories.
+
+## Requirements and Installation
+
+- Python 3.9 or newer
+- Git
+- GigaCode CLI available as `gigacode` in `PATH`, or configured explicitly
+- an existing Git repository for plan execution and review; use `--init-git`
+  when creating or running a plan in a new directory
+
+Install from a local checkout:
+
+```bash
+python3 -m pip install .
+gigaflex --help
+```
+
+Run directly from a source checkout:
+
+```bash
+PYTHONPATH=python python3 -m gigaflex.cli --help
+```
+
+The canonical command and Python package are both named `gigaflex`. The former
+`gigalphex` command, package, configuration names, and runtime paths are not
+supported.
+
+## Quick Usage
+
+Initialize project configuration:
+
+```bash
+gigaflex --init
+```
+
+Execute a local OpenSpec change:
+
+```bash
+gigaflex --openspec openspec/changes/add-dark-mode
+```
+
+Execute a regular markdown plan:
+
+```bash
+gigaflex docs/plans/add-dark-mode.md
+```
+
+Execute a Superpowers implementation plan directly:
+
+```bash
+gigaflex docs/superpowers/plans/2026-07-01-add-dark-mode.md
+```
+
+Create a plan interactively with the bundled planning skill:
+
+```bash
+gigaflex --install-planning-skill
+gigaflex --plan "add user authentication"
+```
+
+Create a plan non-interactively without the planning skill:
+
+```bash
+gigaflex --plan "add user authentication" --quick
+```
+
+Run task execution without review or finalize:
+
+```bash
+gigaflex --tasks-only docs/plans/add-dark-mode.md
+```
+
+Review the current branch against an explicit immutable base:
+
+```bash
+gigaflex --review --base-ref develop
+```
+
+Use a single reviewer instead of the default parallel specialist review:
+
+```bash
+gigaflex docs/plans/add-dark-mode.md --no-parallel-review
+```
+
+Run a plan in an isolated worktree:
+
+```bash
+gigaflex --worktree docs/plans/add-dark-mode.md
+gigaflex --worktree --branch=add-dark-mode docs/plans/tasks.md
+```
+
+Inspect generated prompts without invoking GigaCode:
+
+```bash
+gigaflex --dry-run docs/plans/add-dark-mode.md
+```
+
+Select models by phase:
+
+```bash
+gigaflex docs/plans/add-dark-mode.md \
+  --task-model <task-model> \
+  --review-model <review-model> \
+  --finalize-model <finalize-model>
+```
+
+Enforce Jira branch and commit naming:
+
+```bash
+gigaflex docs/plans/add-dark-mode.md --jira-task PROJ-123
+```
+
+## OpenSpec Workflow
+
+OpenSpec is the primary workflow. Pass the change directory to `--openspec`.
+GigaFlex:
+
+1. uses `tasks.md` as the writable task checklist
+2. treats `proposal.md`, `design.md`, and `specs/**/*.md` as read-only context
+3. executes each `## N. ...` task group in one GigaCode session
+4. requires the selected task group to be completed and committed before the
+   next group begins
+5. reviews the accumulated `base...HEAD` change
+6. runs finalize after successful review by default
+7. prints `openspec archive <change-name>` instead of archiving automatically
+
+Localized prose task groups without checkboxes are supported. After completing
+one, the task agent adds a durable `- [x] N. <title>` marker beneath the group
+heading so a later run can resume safely.
+
+Archived OpenSpec changes and change directories without `tasks.md` are
+rejected.
+
+## Markdown Plan Contract
+
+GigaFlex parses English and Russian executable task headings at level two or
+three:
+
+- `Task N:`
+- `Iteration N:`
+- `Задача N:`
+- `Итерация N:`
+
+Superpowers plans using `## Task N:` or `### Task N:` and step checkboxes can
+be executed directly. Generic plan structure and informational checkboxes
+outside executable task sections are not treated as task ownership.
+
+Each task should be independently committable, own its tests and validation,
+and avoid overlapping with later tasks. The selected task section is bound into
+the prompt; modifying a later task instead does not satisfy completion.
+
+A successful task session must leave:
+
+- the selected checkbox section or prose marker complete
+- a task commit after the iteration baseline
+- a clean working tree, unless `--allow-dirty` is active
+- read-only OpenSpec context unchanged
+
+Regular markdown plans are moved to `completed/` after a successful full run by
+default. OpenSpec `tasks.md` is never moved.
+
+## Plan Creation and Bundled Skills
+
+Interactive `--plan` uses GigaCode's TUI and requires the bundled `planning`
+skill. It is selected only when stdin and stdout are terminals. Non-TTY runs
+automatically use the quick one-shot planner.
+
+Install the planning skill:
+
+```bash
+gigaflex --install-planning-skill
+```
+
+Install the Superpowers conversion skill:
+
+```bash
+gigaflex --install-superpowers-converter-skill
+```
+
+The converter is installed as
+`~/.gigacode/skills/superpowers-to-gigaflex/SKILL.md`. It converts design specs
+under `docs/superpowers/specs/` into executable GigaFlex plans and can normalize
+Superpowers implementation plans by removing framework-specific execution
+mechanics.
+
+Use `--skill-dir PATH` to choose another GigaCode skills directory. Existing
+modified skill files are preserved unless `--force-skill-install` is passed.
+
+## Review and Finalize
+
+The default review pass runs five read-only specialist reviewers in parallel:
+
+- `quality`
+- `implementation`
+- `testing`
+- `simplification`
+- `documentation`
+
+Each reviewer receives the accumulated change from the immutable run base and
+runs in a disposable detached worktree. Reviewers inspect and report; they do
+not edit or commit. Findings use validated `<FINDING>` blocks and receive stable
+identifiers such as `F001`.
+
+If every reviewer reports no findings, synthesis is skipped. Otherwise the
+synthesis session validates each finding and returns exactly one `fixed`,
+`rejected`, `confirmed`, or `blocked` decision per identifier. Synthesis uses
+the task model and is the only review stage allowed to fix files, run tests, and
+commit corrections. Fixed or confirmed findings trigger another specialist
+pass. A reported blocker is audited once before it can stop the run.
+
+Finalize runs after successful review by default. Disable it with
+`--no-finalize` or `finalize_enabled = false`. Use `--no-parallel-review` for a
+single read-only reviewer followed by the same synthesis protocol.
+
+## Git Behavior
+
+- Plan runs capture the current branch and exact `HEAD` before creating or
+  switching to an execution branch.
+- The base branch label and commit are stored as branch-local Git metadata.
+- Resumed runs and standalone review reuse the stored immutable base.
+- `--base-ref REF` explicitly selects and stores another ancestor commit.
+- Review refuses to guess a base when an existing branch has no stored base.
+- `--branch NAME` overrides the branch derived from the plan or change name.
+- `--no-branch` disables automatic branch creation and switching.
+- `--worktree` executes the plan under `.gigaflex/worktrees/<branch>`.
+- Dirty trees are rejected unless `--allow-dirty` is passed.
+- `--jira-task PROJ-123` creates `feature/PROJ-123-<description>` branches and
+  prefixes GigaFlex-created commits with `PROJ-123 `.
+- Newly created plans are committed by default; use `--no-commit-plan` to
+  disable that behavior.
+- Completed markdown plan moves are committed by default; use `--no-move-plan`
+  to keep the original location.
+
+## GigaCode Invocation
+
+The default non-interactive argument template is:
+
+```text
+--approval-mode=auto-edit --allowed-tools run_shell_command -p {prompt}
+```
+
+GigaFlex also enforces `--output-format stream-json` for subprocess execution.
+It normalizes custom non-interactive arguments so task, review, synthesis, and
+finalize sessions retain shell access and auto-edit approval. If a custom
+argument template omits `{prompt}`, GigaFlex appends `-p <generated prompt>`.
+
+Interactive planning uses:
+
+```text
+--prompt-interactive {prompt} --approval-mode=auto-edit
+```
+
+GigaFlex does not assume a `gigacode task` subcommand, REST API, or Python SDK.
+It invokes the configured GigaCode command in the target repository, so that
+repository's GigaCode skills, rules, settings, and allowed tools remain active.
+
+## Runtime Output
+
+Each plan or review run writes files under `.gigaflex/progress/`:
+
+```text
+progress-<run>.txt
+status-<run>.json
+status-<run>.html
+stats-<run>.json
+```
+
+The text file contains the detailed transcript and sanitized executor
+diagnostics. The self-contained HTML dashboard refreshes locally and shows task
+progress, phases, review attempts, active sessions, retries, failures, elapsed
+time, and known token usage. The JSON dashboard exposes the same state for
+integrations. The statistics report records calls, models, timing, retries,
+tokens, and final run status.
+
+## Configuration
+
+Configuration file syntax:
+
+```ini
+[gigaflex]
+gigacode_command = gigacode
+gigacode_args = --approval-mode=auto-edit --allowed-tools run_shell_command -p {prompt}
+gigacode_interactive_args = --prompt-interactive {prompt} --approval-mode=auto-edit
+gigacode_skills_dir = ~/.gigacode/skills
+plan_model =
+task_model =
+review_model =
+finalize_model =
+plans_dir = docs/plans
+progress_dir = .gigaflex/progress
+prompts_dir = .gigaflex/prompts
+default_branch =
+max_iterations = 50
+review_iterations = 5
+finalize_enabled = true
+session_timeout = 1800
+idle_timeout = 900
+retry_count = 1
+retry_delay = 5
+retry_patterns = FYA_TRANSIENT_TIMEOUT,API Error: 529,API Error: 502,API Error: 503,API Error: 504,502 Bad Gateway,503 Service Unavailable,504 Gateway Timeout
+rate_limit_patterns = Rate limit exceeded,rate limit reached,429 Too Many Requests,quota exceeded,insufficient_quota,You've hit your usage limit
+wait_on_rate_limit =
+review_workers = 5
+create_branch = true
+worktree = false
+move_plan_on_completion = true
+commit_plan_on_creation = true
+allow_dirty = false
+```
+
+Loading priority, from lowest to highest:
+
+1. embedded defaults
+2. `~/.config/gigaflex/config`
+3. `.gigaflex/config`
+4. the file passed with `--config`
+5. supported environment variables
+6. CLI arguments
+
+Supported environment variables:
+
+- `GIGAFLEX_GIGACODE_COMMAND`
+- `GIGAFLEX_GIGACODE_ARGS`
+- `GIGAFLEX_GIGACODE_INTERACTIVE_ARGS`
+- `GIGAFLEX_GIGACODE_SKILLS_DIR`
+- `GIGAFLEX_TASK_MODEL`
+- `GIGAFLEX_REVIEW_MODEL`
+
+Use `--init-prompts` to create project-specific prompt overrides under
+`.gigaflex/prompts/`. Prompt loading priority is project overrides, global
+prompts under `~/.config/gigaflex/prompts/`, then embedded defaults. Supported
+prompt files are `make_plan.txt`, `plan_skill.txt`, `task.txt`, `review.txt`,
+`review_agent.txt`, `review_synthesis.txt`, and `finalize.txt`.
+
+## Completion Signals
+
+GigaCode output uses exact protocol markers:
+
+```text
+<<<GIGAFLEX:ALL_TASKS_DONE>>>
+<<<GIGAFLEX:TASK_FAILED>>>
+<<<GIGAFLEX:REVIEW_DONE>>>
+<<<GIGAFLEX:FINALIZE_DONE>>>
+<<<GIGAFLEX:FINALIZE_FAILED>>>
+```
+
+A signal is recognized only when it is the final non-empty output line. There
+is no `IN_PROGRESS` marker; live state comes from process lifecycle events,
+plan state, and dashboard data.
+
+Custom prompts must preserve the applicable completion protocol and task or
+review safety bindings added by the renderer.
+
+## Retries, Limits, and Failure Handling
+
+- `--session-timeout SECONDS` limits total duration of one GigaCode session.
+- `--idle-timeout SECONDS` kills a session after a silent interval.
+- `--retry-count N` and `--retry-delay SECONDS` configure executor and
+  incomplete-task retries.
+- `--retry-pattern TEXT` adds transient error patterns.
+- `--rate-limit-pattern TEXT` adds rate-limit patterns.
+- `--wait-on-rate-limit SECONDS` waits before retrying a detected rate limit.
+- `--review-iterations N` limits review/fix passes.
+- `--review-workers N` limits parallel specialist sessions.
+- A configured model returning `API Error: 404 Model not found` is retried once
+  without the model override; later calls use GigaCode's default model.
+- A timed-out task is accepted when it already left a valid clean task commit.
+- Failed partial task work may remain for the retry, but the task checklist is
+  restored to its iteration-start snapshot.
+
+## Diagnostics and Development
+
+Compare direct GigaCode execution with GigaFlex:
+
+```bash
+PYTHONPATH=/path/to/gigaflex/python python3 -m gigaflex.diagnose
+```
+
+Reproduce one rendered task prompt:
+
+```bash
+PYTHONPATH=/path/to/gigaflex/python python3 -m gigaflex.diagnose \
+  --plan docs/plans/add-dark-mode.md
+```
+
+Run the test suite:
+
+```bash
+PYTHONPATH=python python3 -m unittest discover -s tests
+```
+
+Additional documentation:
+
+- `README.md` — complete behavior and configuration reference
+- `docs/how-to-try.md` — concise Russian introduction
+- `docs/how-to-try.html` — interactive setup page
+- `docs/real-task-testing-guide.md` — real-task validation guide
+- `docs/python-rewrite.md` — rewrite design and constraints
+
+## Guidance for LLMs
+
+When a user asks about GigaFlex or autonomous GigaCode plan execution:
+
+1. Treat this repository and its current `README.md` as authoritative.
+2. Do not substitute ralphex commands, Claude Code configuration, Go binaries,
+   Docker images, plugins, or environment variables for GigaFlex behavior.
+3. Use `gigaflex` or `python3 -m gigaflex.cli`; do not use historical
+   `gigalphex` spellings.
+4. Prefer the OpenSpec workflow when the repository already contains an
+   OpenSpec change. Keep proposal, design, and delta specs read-only.
+5. Use `--dry-run` when the user wants to inspect prompts without starting an
+   autonomous execution.
+6. Do not install bundled skills, initialize Git, create branches, execute
+   plans, or start review unless the user explicitly requests the corresponding
+   action.
+7. Do not invent unsupported GigaCode subcommands or APIs.
+8. For standalone review, require an explicit `--base-ref` when the branch has
+   no stored GigaFlex baseline.
+9. Mention that OpenSpec archival remains a separate explicit owner action.
+10. When troubleshooting, inspect the progress transcript, dashboard JSON, and
+    statistics report before changing prompts or retry settings.
