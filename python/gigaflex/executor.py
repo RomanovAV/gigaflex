@@ -724,6 +724,14 @@ class GigaCodeExecutor:
             input_tokens=result.usage.input_tokens if result.usage else "unknown",
             output_tokens=result.usage.output_tokens if result.usage else "unknown",
             total_tokens=result.usage.total_tokens if result.usage else "unknown",
+            stream_events=",".join(stream_decoder.event_types) or "none",
+            stream_event_count=stream_decoder.event_count,
+            max_stream_event_chars=stream_decoder.max_event_chars,
+            tool_calls=stream_decoder.tool_calls,
+            tool_results=stream_decoder.tool_results,
+            max_tool_input_chars=stream_decoder.max_tool_input_chars,
+            max_tool_result_chars=stream_decoder.max_tool_result_chars,
+            tool_result_errors=stream_decoder.tool_result_errors,
             signal=result.signal or "none",
             timed_out=timed_out,
             idle_timed_out=idle_timed_out,
@@ -984,6 +992,14 @@ class _StreamJsonDecoder:
     def __init__(self) -> None:
         self._buffer = ""
         self._assistant_text_seen = False
+        self.event_types: tuple[str, ...] = ()
+        self.event_count = 0
+        self.max_event_chars = 0
+        self.tool_calls = 0
+        self.tool_results = 0
+        self.max_tool_input_chars = 0
+        self.max_tool_result_chars = 0
+        self.tool_result_errors = 0
         self.reported_duration_ms: Optional[int] = None
         self.api_duration_ms: Optional[int] = None
         self.session_id = ""
@@ -1007,6 +1023,7 @@ class _StreamJsonDecoder:
         return self._process_line(line, terminated=False)
 
     def _process_line(self, line: str, *, terminated: bool) -> list[str]:
+        self.max_event_chars = max(self.max_event_chars, len(line))
         try:
             event = json.loads(line)
         except (json.JSONDecodeError, TypeError):
@@ -1015,6 +1032,10 @@ class _StreamJsonDecoder:
             return [line + ("\n" if terminated else "")]
 
         event_type = event.get("type")
+        self.event_count += 1
+        if isinstance(event_type, str):
+            self.event_types = tuple(dict.fromkeys([*self.event_types, event_type]))
+        self._record_tool_blocks(event)
         if event_type == "system":
             self.session_id = _string_value(event.get("session_id")) or self.session_id
             model = _string_value(event.get("model"))
@@ -1049,6 +1070,24 @@ class _StreamJsonDecoder:
             return []
         return []
 
+    def _record_tool_blocks(self, event: dict[str, object]) -> None:
+        for block in _nested_typed_blocks(event):
+            block_type = block.get("type")
+            if block_type == "tool_use":
+                self.tool_calls += 1
+                self.max_tool_input_chars = max(
+                    self.max_tool_input_chars,
+                    _value_char_count(block.get("input")),
+                )
+            elif block_type == "tool_result":
+                self.tool_results += 1
+                self.max_tool_result_chars = max(
+                    self.max_tool_result_chars,
+                    _value_char_count(block.get("content")),
+                )
+                if block.get("is_error") is True:
+                    self.tool_result_errors += 1
+
 
 def _assistant_text(content: object) -> str:
     if isinstance(content, str):
@@ -1062,6 +1101,26 @@ def _assistant_text(content: object) -> str:
             if isinstance(text, str):
                 parts.append(text)
     return "".join(parts)
+
+
+def _nested_typed_blocks(value: object):
+    if isinstance(value, dict):
+        if value.get("type") in {"tool_use", "tool_result"}:
+            yield value
+        for child in value.values():
+            yield from _nested_typed_blocks(child)
+    elif isinstance(value, list):
+        for child in value:
+            yield from _nested_typed_blocks(child)
+
+
+def _value_char_count(value: object) -> int:
+    if isinstance(value, str):
+        return len(value)
+    try:
+        return len(json.dumps(value, ensure_ascii=False))
+    except (TypeError, ValueError):
+        return len(str(value))
 
 
 def _parse_usage(value: object) -> Optional[TokenUsage]:

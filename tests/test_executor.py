@@ -494,6 +494,59 @@ print(json.dumps({
             self.assertEqual(1, len(statistics.invocations))
             self.assertEqual("task", statistics.invocations[0].session)
 
+    def test_stream_json_reports_tool_sizes_without_logging_contents(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            script = write_script(
+                Path(tmp) / "stream_json_tools.py",
+                """#!/usr/bin/env python3
+import json
+secret_command = "cat /private/secret-review-packet"
+secret_result = "sensitive patch contents" * 20
+print(json.dumps({
+    "type": "assistant",
+    "message": {
+        "content": [{
+            "type": "tool_use",
+            "id": "tool-1",
+            "name": "run_shell_command",
+            "input": {"command": secret_command}
+        }]
+    }
+}))
+print(json.dumps({
+    "type": "user",
+    "message": {
+        "content": [{
+            "type": "tool_result",
+            "tool_use_id": "tool-1",
+            "content": secret_result
+        }]
+    }
+}))
+print(json.dumps({
+    "type": "result",
+    "result": "[API Error: 400 terminated]",
+    "usage": {"input_tokens": 10, "output_tokens": 2, "total_tokens": 12}
+}))
+""",
+            )
+            diagnostics: list[str] = []
+
+            result = GigaCodeExecutor(
+                command=str(script),
+                output=lambda _line: None,
+                diagnostic=diagnostics.append,
+            ).run("prompt")
+
+            joined = "\n".join(diagnostics)
+            self.assertFalse(result.ok)
+            self.assertIn('stream_events="assistant,user,result"', joined)
+            self.assertIn("tool_calls=1", joined)
+            self.assertIn("tool_results=1", joined)
+            self.assertIn("max_tool_result_chars=480", joined)
+            self.assertNotIn("secret-review-packet", joined)
+            self.assertNotIn("sensitive patch contents", joined)
+
     def test_detects_noninteractive_approval_warning(self) -> None:
         result = ExecResult(
             output='Warning: Tool "write_file" requires user approval but cannot execute in non-interactive mode\n',
