@@ -494,12 +494,12 @@ class RunnerTest(unittest.TestCase):
                 self.batch_prompts.append(prompts)
                 self.workdirs = dict(workdirs)
                 first_worktree = next(iter(workdirs.values()))
-                self.review_packet = first_worktree.parent / "review-context"
-                manifest = self.review_packet / "manifest.txt"
+                self.review_packet = first_worktree.parent / "review-context.txt"
+                manifest = self.review_packet
                 assert manifest.is_file()
                 assert all(str(manifest) in prompt for prompt in prompts.values())
                 assert all(
-                    "do not run repository-wide diff commands" in prompt
+                    "do not recreate the repository-wide diff" in prompt
                     for prompt in prompts.values()
                 )
                 for path in workdirs.values():

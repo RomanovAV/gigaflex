@@ -223,8 +223,8 @@ class PromptTemplatesTest(unittest.TestCase):
         self.assertIn("untracked files", DEFAULT_PROMPTS.review_agent)
         self.assertIn("path-limited diffs", DEFAULT_PROMPTS.review_synthesis)
 
-    def test_review_packet_overrides_repository_wide_diff_commands(self) -> None:
-        manifest = Path("/tmp/gigaflex-review/context/manifest.txt")
+    def test_review_context_file_overrides_repository_wide_diff_commands(self) -> None:
+        manifest = Path("/tmp/gigaflex-review/review-context.txt")
         prompt = render_review_prompt(
             DEFAULT_PROMPTS.review,
             PromptContext(
@@ -240,8 +240,8 @@ class PromptTemplatesTest(unittest.TestCase):
             "replaces any earlier instruction to run a repository-wide `git diff`",
             prompt,
         )
-        self.assertIn("must name exactly one file", prompt)
-        self.assertIn("never concatenate packet files", prompt)
+        self.assertIn("single temporary file", prompt)
+        self.assertIn("do not recreate the repository-wide diff", prompt)
         self.assertIn("deleted after this review batch", prompt)
 
     def test_review_prompt_preserves_strict_code_review_for_mixed_work(self) -> None:

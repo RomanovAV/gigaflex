@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-import json
 import os
 from pathlib import Path
 import re
@@ -16,8 +15,6 @@ BRANCH_SLUG_RE = re.compile(r"[^A-Za-z0-9._-]+")
 COMMIT_IDENTITY_RE = re.compile(
     r"^(.*) <([^<>]*)> (\d+) ([+-]\d{4})$"
 )
-REVIEW_INDEX_FRAGMENT_CHARS = 4_000
-REVIEW_PATCH_FRAGMENT_CHARS = 8_000
 
 
 class GitError(RuntimeError):
@@ -621,7 +618,7 @@ class _ReviewWorktreeContext:
         self.base_ref = base_ref
         self.root: Optional[Path] = None
         self.worktrees: list[Path] = []
-        self.review_packet: Optional[Path] = None
+        self.review_context: Optional[Path] = None
 
     def __enter__(self) -> ReviewWorktreeSet:
         parent = str(self.manager.temp_parent) if self.manager.temp_parent else None
@@ -634,7 +631,7 @@ class _ReviewWorktreeContext:
                 "session=review-worktree event=snapshot_created "
                 f"commit={snapshot} workspaces={len(self.names)}"
             )
-            review_manifest = self._create_review_packet(snapshot)
+            review_manifest = self._create_review_context_file(snapshot)
             paths: dict[str, Path] = {}
             for index, name in enumerate(self.names, start=1):
                 slug = worktree_dir_name(name)
@@ -685,20 +682,20 @@ class _ReviewWorktreeContext:
             self.manager.git.prune_worktrees()
         except (OSError, GitError) as exc:
             cleanup_errors.append(f"git worktree prune: {exc}")
-        packet = self.review_packet
+        review_context = self.review_context
         try:
             if root.exists():
                 shutil.rmtree(root)
         except OSError as exc:
             cleanup_errors.append(f"{root}: {exc}")
         else:
-            if packet is not None:
+            if review_context is not None:
                 self.manager.report(
                     "session=review-worktree event=packet_removed "
-                    f"path={str(packet)!r}"
+                    f"path={str(review_context)!r}"
                 )
         self.worktrees.clear()
-        self.review_packet = None
+        self.review_context = None
         self.root = None
         if cleanup_errors:
             raise GitError(
@@ -706,17 +703,11 @@ class _ReviewWorktreeContext:
                 + "; ".join(cleanup_errors)
             )
 
-    def _create_review_packet(self, snapshot: str) -> Path:
+    def _create_review_context_file(self, snapshot: str) -> Path:
         assert self.root is not None
         base_commit = self.manager.git.resolve_commit(self.base_ref)
-        packet = self.root / "review-context"
-        indexes = packet / "indexes"
-        patches = packet / "patches"
-        summaries = packet / "summaries"
-        indexes.mkdir(parents=True)
-        patches.mkdir()
-        summaries.mkdir()
-        self.review_packet = packet
+        review_context = self.root / "review-context.txt"
+        self.review_context = review_context
 
         changed_paths = sorted(
             self.manager.git.changed_paths_between(base_commit, snapshot)
@@ -734,121 +725,41 @@ class _ReviewWorktreeContext:
             snapshot,
             "--",
         ).stdout
-        entries: list[str] = []
-        fragment_count = 0
-        for file_index, path in enumerate(changed_paths, start=1):
-            path_id = f"{file_index:04d}"
-            patch = self.manager.git.run(
-                "diff",
-                "--no-ext-diff",
-                "--no-textconv",
-                "--no-renames",
-                base_commit,
-                snapshot,
-                "--",
-                str(path),
-            ).stdout
-            chunks = [
-                patch[index:index + REVIEW_PATCH_FRAGMENT_CHARS]
-                for index in range(0, len(patch), REVIEW_PATCH_FRAGMENT_CHARS)
-            ] or ["(No textual diff is available for this changed path.)\n"]
-            patch_directory = patches / path_id
-            patch_directory.mkdir()
-            for chunk_index, chunk in enumerate(chunks, start=1):
-                fragment = patch_directory / f"{chunk_index:04d}.patch"
-                fragment.write_text(chunk, encoding="utf-8")
-                fragment_count += 1
-            entries.extend(
-                (
-                    f"path_id: {path_id}",
-                    f"path: {json.dumps(str(path), ensure_ascii=False)}",
-                    f"patch_directory: patches/{path_id}",
-                    f"patch_fragments: {len(chunks)}",
-                    "patch_name_pattern: NNNN.patch",
-                    "",
-                )
-            )
-
-        index_fragments = self._write_bounded_fragments(
-            indexes,
-            "index",
-            "\n".join(entries).rstrip() + "\n" if entries else "(no changed paths)\n",
-            REVIEW_INDEX_FRAGMENT_CHARS,
-        )
-        status_fragments = self._write_bounded_fragments(
-            summaries,
-            "status",
-            status.rstrip() + "\n" if status.strip() else "(clean)\n",
-            REVIEW_INDEX_FRAGMENT_CHARS,
-        )
-        stat_fragments = self._write_bounded_fragments(
-            summaries,
-            "diffstat",
-            stat.rstrip() + "\n" if stat.strip() else "(no diff stat)\n",
-            REVIEW_INDEX_FRAGMENT_CHARS,
-        )
-
-        manifest = packet / "manifest.txt"
-        manifest.write_text(
+        diff = self.manager.git.run(
+            "diff",
+            "--no-ext-diff",
+            "--no-textconv",
+            "--no-renames",
+            base_commit,
+            snapshot,
+            "--",
+        ).stdout
+        content = (
             "\n".join(
                 (
-                    "GigaFlex bounded review packet",
+                    "GigaFlex review context",
                     f"base_commit: {base_commit}",
                     f"snapshot_commit: {snapshot}",
                     f"changed_paths: {len(changed_paths)}",
-                    f"patch_fragments: {fragment_count}",
-                    f"max_index_fragment_chars: {REVIEW_INDEX_FRAGMENT_CHARS}",
-                    f"max_fragment_chars: {REVIEW_PATCH_FRAGMENT_CHARS}",
                     "",
-                    "Resolve every packet-relative path against the directory containing this manifest.",
-                    "Read exactly one referenced file per shell command.",
-                    "Do not concatenate files or use wildcards, loops, xargs, or find -exec.",
+                    "Working-tree status captured before the snapshot:",
+                    status.rstrip() or "(clean)",
                     "",
-                    "Changed-path index directory: indexes",
-                    f"Changed-path index fragments: {index_fragments}",
-                    "Changed-path index pattern: index-NNNN.txt",
+                    "Overall diff stat:",
+                    stat.rstrip() or "(no diff stat)",
                     "",
-                    "Working-tree status directory: summaries",
-                    f"Working-tree status fragments: {status_fragments}",
-                    "Working-tree status pattern: status-NNNN.txt",
-                    "",
-                    "Diff-stat directory: summaries",
-                    f"Diff-stat fragments: {stat_fragments}",
-                    "Diff-stat pattern: diffstat-NNNN.txt",
-                    "",
-                    "Patch root: patches",
-                    "Each index entry gives one path_id, its patch directory, and fragment count.",
-                    "Read relevant patch files from that directory in numeric order, one per command.",
+                    "Final diff:",
+                    diff.rstrip() or "(no diff)",
                 )
-            ).rstrip() + "\n",
-            encoding="utf-8",
+            ).rstrip() + "\n"
         )
+        review_context.write_text(content, encoding="utf-8")
         self.manager.report(
             "session=review-worktree event=packet_created "
-            f"path={str(packet)!r} files={len(changed_paths)} "
-            f"index_fragments={index_fragments} patch_fragments={fragment_count} "
-            f"index_chars={REVIEW_INDEX_FRAGMENT_CHARS} "
-            f"patch_chars={REVIEW_PATCH_FRAGMENT_CHARS}"
+            f"path={str(review_context)!r} files={len(changed_paths)} "
+            f"chars={len(content)}"
         )
-        return manifest
-
-    @staticmethod
-    def _write_bounded_fragments(
-        directory: Path,
-        prefix: str,
-        content: str,
-        max_chars: int,
-    ) -> int:
-        chunks = [
-            content[index:index + max_chars]
-            for index in range(0, len(content), max_chars)
-        ] or ["\n"]
-        for index, chunk in enumerate(chunks, start=1):
-            (directory / f"{prefix}-{index:04d}.txt").write_text(
-                chunk,
-                encoding="utf-8",
-            )
-        return len(chunks)
+        return review_context
 
 
 @dataclass(frozen=True)

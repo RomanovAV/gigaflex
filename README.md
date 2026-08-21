@@ -430,12 +430,11 @@ Review behavior:
 - standalone `--review` restores that stored commit; when none is stored, pass
   `--base-ref REF` once instead of silently reviewing against `main` or `master`
 - reviewers only inspect and report findings; they do not edit or commit
-- each review batch receives a temporary bounded packet: a small routing
-  manifest, changed-path index fragments capped at 4,000 characters, and
-  path-specific patch fragments capped at 8,000 characters. Reviewers read
-  exactly one packet file at a time instead of requesting a repository-wide
-  diff, and the whole packet is removed with the disposable review worktrees
-  after both successful and failed review batches
+- each review batch receives one temporary `review-context.txt` containing the
+  final accumulated diff plus status and diff-stat summaries. Reviewers use
+  that file instead of rebuilding the repository-wide diff, and it is removed
+  with the disposable review worktrees after both successful and failed review
+  batches
 - synthesis uses `task_model`, verifies reported findings, and is the only
   stage that may fix, test, and commit deliverable changes; runner-owned plan,
   progress, prompt-context, checkpoint, status, and statistics files remain

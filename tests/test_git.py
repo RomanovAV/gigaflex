@@ -9,8 +9,6 @@ from gigaflex.git import (
     BranchBaseline,
     GitError,
     GitService,
-    REVIEW_INDEX_FRAGMENT_CHARS,
-    REVIEW_PATCH_FRAGMENT_CHARS,
     ReviewWorktreeManager,
     TaskWorktreeManager,
     jira_branch_name,
@@ -91,12 +89,7 @@ class GitServiceTest(unittest.TestCase):
             with manager.create(["quality", "testing"]) as worktrees:
                 created_paths = list(worktrees.paths.values())
                 manifest = worktrees.review_manifest
-                packet = manifest.parent
                 manifest_text = manifest.read_text(encoding="utf-8")
-                index_files = sorted((packet / "indexes").glob("*.txt"))
-                index_text = "".join(
-                    path.read_text(encoding="utf-8") for path in index_files
-                )
                 self.assertEqual(head_before, git.head_commit())
                 self.assertEqual(
                     "modified\n",
@@ -109,33 +102,14 @@ class GitServiceTest(unittest.TestCase):
                 self.assertFalse((created_paths[0] / "ignored.txt").exists())
                 self.assertEqual("", GitService(created_paths[0]).current_branch())
                 self.assertFalse(GitService(created_paths[0]).is_dirty())
-                self.assertLessEqual(
-                    len(manifest_text),
-                    REVIEW_INDEX_FRAGMENT_CHARS,
-                )
-                self.assertNotIn(str(packet), manifest_text)
-                self.assertTrue(index_files)
-                self.assertTrue(
-                    all(
-                        len(path.read_text(encoding="utf-8"))
-                        <= REVIEW_INDEX_FRAGMENT_CHARS
-                        for path in index_files
-                    )
-                )
-                self.assertIn('path: "tracked.txt"', index_text)
-                self.assertIn('path: "untracked.txt"', index_text)
-                fragments = list((packet / "patches").rglob("*.patch"))
-                self.assertGreaterEqual(len(fragments), 2)
-                self.assertTrue(
-                    all(
-                        len(path.read_text(encoding="utf-8"))
-                        <= REVIEW_PATCH_FRAGMENT_CHARS
-                        for path in fragments
-                    )
-                )
+                self.assertEqual("review-context.txt", manifest.name)
+                self.assertIn("changed_paths: 2", manifest_text)
+                self.assertIn("diff --git a/tracked.txt b/tracked.txt", manifest_text)
+                self.assertIn("diff --git a/untracked.txt b/untracked.txt", manifest_text)
+                self.assertFalse((manifest.parent / "review-context").exists())
 
             self.assertTrue(all(not path.exists() for path in created_paths))
-            self.assertFalse(packet.exists())
+            self.assertFalse(manifest.exists())
             self.assertEqual(head_before, git.head_commit())
             self.assertEqual(status_before, git.run("status", "--short").stdout)
             worktree_list = git.run("worktree", "list", "--porcelain").stdout
@@ -145,7 +119,7 @@ class GitServiceTest(unittest.TestCase):
             self.assertIn("event=packet_removed", "\n".join(diagnostics))
             self.assertIn("event=removed", "\n".join(diagnostics))
 
-    def test_large_review_packet_keeps_every_routing_file_bounded(self) -> None:
+    def test_large_review_context_is_written_to_one_file(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             repo = tmp_path / "repo"
@@ -164,35 +138,19 @@ class GitServiceTest(unittest.TestCase):
                 )
 
             manager = ReviewWorktreeManager(git, temp_parent=tmp_path)
-            packet = None
+            review_context = None
             with manager.create(["quality"]) as worktrees:
-                packet = worktrees.review_manifest.parent
+                review_context = worktrees.review_manifest
                 manifest_text = worktrees.review_manifest.read_text(encoding="utf-8")
-                index_files = sorted((packet / "indexes").glob("*.txt"))
-                summary_files = sorted((packet / "summaries").glob("*.txt"))
-                patch_files = sorted((packet / "patches").rglob("*.patch"))
+                self.assertEqual("review-context.txt", review_context.name)
+                self.assertIn("changed_paths: 120", manifest_text)
+                self.assertEqual(120, manifest_text.count("diff --git "))
+                self.assertFalse((review_context.parent / "indexes").exists())
+                self.assertFalse((review_context.parent / "patches").exists())
+                self.assertFalse((review_context.parent / "summaries").exists())
 
-                self.assertLessEqual(len(manifest_text), REVIEW_INDEX_FRAGMENT_CHARS)
-                self.assertNotIn(str(packet), manifest_text)
-                self.assertGreater(len(index_files), 1)
-                self.assertTrue(
-                    all(
-                        len(path.read_text(encoding="utf-8"))
-                        <= REVIEW_INDEX_FRAGMENT_CHARS
-                        for path in [*index_files, *summary_files]
-                    )
-                )
-                self.assertEqual(120, len(patch_files))
-                self.assertTrue(
-                    all(
-                        len(path.read_text(encoding="utf-8"))
-                        <= REVIEW_PATCH_FRAGMENT_CHARS
-                        for path in patch_files
-                    )
-                )
-
-            assert packet is not None
-            self.assertFalse(packet.exists())
+            assert review_context is not None
+            self.assertFalse(review_context.exists())
 
     def test_review_worktrees_are_removed_when_review_raises(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -225,7 +183,7 @@ class GitServiceTest(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "review failed"):
                 with manager.create(["quality"]) as worktrees:
                     created_path = worktrees.paths["quality"]
-                    packet = worktrees.review_manifest.parent
+                    packet = worktrees.review_manifest
                     raise RuntimeError("review failed")
 
             assert created_path is not None
@@ -271,7 +229,7 @@ class GitServiceTest(unittest.TestCase):
             git.prune_worktrees = failed_prune  # type: ignore[method-assign]
             with self.assertRaisesRegex(GitError, "simulated prune failure"):
                 with manager.create(["quality"]) as worktrees:
-                    packet = worktrees.review_manifest.parent
+                    packet = worktrees.review_manifest
 
             assert packet is not None
             self.assertFalse(packet.exists())

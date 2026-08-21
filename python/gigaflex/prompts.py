@@ -226,9 +226,9 @@ REVIEW_PROMPT = """You are the review agent.
 
 Review {goal}.
 
-Bounded review manifest: {review_manifest}
+Temporary review context file: {review_manifest}
 
-When the runner-generated manifest is available, use it to locate the size-capped changed-file index and patch fragments. Read exactly one packet file per shell command. If it is unavailable, begin with only bounded discovery commands:
+When the runner-generated context file is available, read it as the final accumulated diff and working-tree summary. If it is unavailable, begin with only bounded discovery commands:
 - git status --short
 - git log {base_ref}..HEAD --oneline
 - git diff {base_ref}...HEAD --stat
@@ -256,9 +256,9 @@ Review {goal}.
 Agent focus:
 {agent_focus}
 
-Bounded review manifest: {review_manifest}
+Temporary review context file: {review_manifest}
 
-When the runner-generated manifest is available, use it to locate the size-capped changed-file index and patch fragments. Read exactly one packet file per shell command. If it is unavailable, begin with only bounded discovery commands:
+When the runner-generated context file is available, read it as the final accumulated diff and working-tree summary. If it is unavailable, begin with only bounded discovery commands:
 - git status --short
 - git diff {base_ref}...HEAD --stat
 - git diff {base_ref}...HEAD --name-only
@@ -337,16 +337,13 @@ Do not output introductory text, summaries, markdown fences, bullets, or text ou
 Every finding must identify a concrete, reproducible issue. A suspicion, style preference, or optional improvement is not a finding.
 """
 
-BOUNDED_REVIEW_PACKET_GUIDANCE = """Runner-generated bounded review context:
-- manifest: `{review_manifest}`
-- read the small routing manifest first; resolve its packet-relative paths against the manifest's directory
-- the manifest points to separately bounded changed-path index, status, diff-stat, and patch files
+REVIEW_CONTEXT_FILE_GUIDANCE = """Runner-generated review context:
+- context file: `{review_manifest}`
+- read this single temporary file as the final accumulated diff plus its status and diff-stat summary
 - this later instruction replaces any earlier instruction to run a repository-wide `git diff`, `git diff --cached`, or unbounded file dump
-- every shell command that reads the packet must name exactly one file; never concatenate packet files or use wildcards, loops, xargs, `find -exec`, or command substitution to read several at once
-- do not run repository-wide diff commands; inspect one index or patch fragment at a time
-- each file is size-capped by the runner; use the index fragments to select paths relevant to the assigned focus while maintaining coverage
+- do not recreate the repository-wide diff; use the supplied file, then inspect individual source files only when needed
 - read a changed source file directly only when its surrounding context is necessary to verify a concrete issue
-- the manifest and fragments are temporary runner-owned files outside the repository worktree and are deleted after this review batch
+- the context file is runner-owned, lives outside the repository worktree, and is deleted after this review batch
 """
 
 REVIEW_DECISION_MEMORY_GUIDANCE = """Runner-maintained prior review decision memory:
@@ -515,6 +512,7 @@ LEGACY_DEFAULT_HASHES = {
         "fc403fd697eb8fcb51d57172c501e81716aa695c311fb50fc10be31fcb5649fb",
     },
     "review": {
+        "ae3cf2144cc150f632fbf5c56c7d573e844a840e585ae12c9ca33e152a198e86",
         "beac72800997cd50b25dcefa58a250900c973b41ae01760c75a1b12b2752c64a",
         "6e4d607d9c0b08f3b3102b77be952438905b4616ace7f92f20f1ef4f01d43e5a",
         "7a898f51938f284971665170fd68bd95b2a0298113babe683cee67b2c70e1ed3",
@@ -523,6 +521,7 @@ LEGACY_DEFAULT_HASHES = {
         "5511a9ae13abc4863307de060fa09902e507b361d6efaa7baadc80f3e663806d",
     },
     "review_agent": {
+        "b3034e547ebf81b16f86d957de645b049d58204a6faf2488f502954b54cbbe56",
         "1388a09fbbc87df2686f343e437e4a667f199dd80959625bd73be6e779fe266f",
         "b5aa5defc9ad4d9ba11fdb165d509a010930c024797d95c0ec70d0804f0f15c0",
         "886b4e55da39ec422bfb0d8ebdd3ecab4e7b48578dafe8f24cbd5836b22f703a",
@@ -949,7 +948,7 @@ def _with_review_guards(
     if review_manifest is not None:
         rendered = _with_guidance(
             rendered,
-            BOUNDED_REVIEW_PACKET_GUIDANCE.format(
+            REVIEW_CONTEXT_FILE_GUIDANCE.format(
                 review_manifest=review_manifest,
             ),
         )
