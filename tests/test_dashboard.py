@@ -48,6 +48,7 @@ class ProgressDashboardTest(unittest.TestCase):
             self.assertIn('http-equiv="refresh" content="2"', page)
             self.assertIn("feature/dashboard", page)
             self.assertNotIn("fetch(", page)
+            self.assertLess(page.index("Plan progress"), page.index("Review status"))
 
     def test_tracks_task_session_usage_and_completion(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

@@ -547,7 +547,7 @@ def _render_html(state: dict[str, object]) -> str:
     .phase strong {{ display:block; }} .phase small {{ color:var(--muted); text-transform:capitalize; }}
     .grid {{ display:grid; grid-template-columns:minmax(0,1.55fr) minmax(280px,.85fr); gap:18px; }}
     .panel {{ padding:22px; }}
-    .review-panel {{ margin-bottom:18px; }}
+    .review-panel {{ margin-top:18px; }}
     .review-summary {{ display:flex; align-items:flex-start; justify-content:space-between; gap:18px; }}
     .review-status {{ display:flex; align-items:center; gap:10px; font-weight:750; }}
     .review-meta {{ color:var(--muted); font-size:13px; text-align:right; }}
@@ -583,11 +583,11 @@ def _render_html(state: dict[str, object]) -> str:
       <div class="status status-{html.escape(status)}"><span class="dot"></span>{html.escape(status_label)} · <span id="elapsed">—</span></div>
     </header>
     <section class="phases" aria-label="Run phases">{phase_html}</section>
-    {review_html}
     <div class="grid">
       <section class="panel"><h2>Plan progress</h2>{task_html}</section>
       <aside class="panel"><h2>Active sessions</h2>{session_html}<div class="metrics"><div class="metric"><b>{token_text}</b><span>tokens</span></div><div class="metric"><b>{sum(1 for item in tasks if isinstance(item, dict) and item.get('status') == 'completed')} / {len(tasks)}</b><span>tasks complete</span></div></div></aside>
     </div>
+    {review_html}
     <footer>{f'<span>Branch: <code>{branch}</code></span>' if branch else ''}<span>Updated: <time>{updated_at}</time></span>{f'<span>Detailed log: <code>{progress_file}</code></span>' if progress_file else ''}</footer>
   </main>
   <script>
