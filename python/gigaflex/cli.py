@@ -14,6 +14,7 @@ from .config import (
     init_project_prompt_templates,
     load_config,
 )
+from .checkpoint import RunCheckpoint, checkpoint_path
 from .dashboard import ProgressDashboard, dashboard_paths
 from .executor import GigaCodeExecutor
 from .git import (
@@ -780,6 +781,7 @@ def main(argv: Optional[list[str]] = None) -> int:
         print(f"dashboard: {dashboard_html.resolve()}")
     statistics = RunStatistics()
     stats_file = statistics_path(progress_file).resolve()
+    checkpoint_file = checkpoint_path(progress_file).resolve()
     if not args.dry_run:
         statistics.write_json(stats_file)
     task_executor = GigaCodeExecutor(
@@ -910,22 +912,46 @@ def main(argv: Optional[list[str]] = None) -> int:
         if args.dry_run
         else ReviewWorktreeManager(git, diagnostic=log.diagnostic)
     )
+    repo_root = git.repo_root() if not args.dry_run else None
+    orchestration_paths = (
+        tuple(
+            path.resolve().relative_to(repo_root)
+            for path in (
+                progress_file,
+                stats_file,
+                checkpoint_file,
+                dashboard_json,
+                dashboard_html,
+                log.prompt_context_file,
+            )
+            if path.resolve().is_relative_to(repo_root)
+        )
+        if repo_root is not None
+        else ()
+    )
     task_worktrees = (
         None
         if args.dry_run or args.review
         else TaskWorktreeManager(
             git,
             diagnostic=log.diagnostic,
-            ignored_paths=tuple(
-                path.resolve().relative_to(git.repo_root())
-                for path in (
-                    progress_file,
-                    stats_file,
-                    dashboard_json,
-                    dashboard_html,
-                )
-                if path.resolve().is_relative_to(git.repo_root())
+            ignored_paths=orchestration_paths,
+        )
+    )
+    checkpoint = (
+        None
+        if args.dry_run
+        else RunCheckpoint(
+            checkpoint_file,
+            git,
+            identity=(
+                f"{plan_source.kind}:{plan_source.source_path.resolve()}"
+                if plan_source is not None
+                else f"review:{git.current_branch()}"
             ),
+            base_commit=run_baseline.base_commit if run_baseline is not None else "",
+            ignored_paths=orchestration_paths,
+            diagnostic=log.diagnostic,
         )
     )
 
@@ -944,6 +970,7 @@ def main(argv: Optional[list[str]] = None) -> int:
             dashboard=dashboard,
             review_worktrees=review_worktrees,
             task_worktrees=task_worktrees,
+            checkpoint=checkpoint,
         ).run()
         if (
             not args.dry_run

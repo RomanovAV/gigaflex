@@ -6,6 +6,7 @@ from pathlib import Path
 import time
 from typing import Callable, Iterator, Optional
 
+from .checkpoint import RunCheckpoint
 from .dashboard import ProgressDashboard
 from .executor import ExecResult, GigaCodeExecutor
 from .git import (
@@ -92,6 +93,7 @@ class Runner:
         dashboard: Optional[ProgressDashboard] = None,
         review_worktrees: Optional[ReviewWorktreeManager] = None,
         task_worktrees: Optional[TaskWorktreeManager] = None,
+        checkpoint: Optional[RunCheckpoint] = None,
     ) -> None:
         self.options = options
         self.executor = executor
@@ -103,6 +105,7 @@ class Runner:
         self.dashboard = dashboard
         self.review_worktrees = review_worktrees
         self.task_worktrees = task_worktrees
+        self.checkpoint = checkpoint
         self._active_cwd: Optional[Path] = None
 
     def run(self) -> None:
@@ -110,14 +113,70 @@ class Runner:
             self.print_prompts()
             return
         if not self.options.review_only:
+            had_uncompleted_work = self._has_uncompleted_work()
+            if self.checkpoint is not None and had_uncompleted_work:
+                self.checkpoint.invalidate_from("tasks")
+                self.checkpoint.mark_started("tasks")
             self.run_tasks()
+            if self.checkpoint is not None and had_uncompleted_work:
+                self.checkpoint.mark_completed(
+                    "tasks",
+                    self.checkpoint.current_state(),
+                )
         if self.options.tasks_only:
             self.log.section("done")
             self.log.write("task execution completed\n")
             return
-        self.run_review()
+        review_reused = False
+        if self.checkpoint is not None and not self.options.review_only:
+            review_state = self.checkpoint.current_state()
+            review_reused = self.checkpoint.can_reuse("review", review_state)
+        if review_reused:
+            self._log_checkpoint_reuse("review")
+        else:
+            if self.checkpoint is not None:
+                self.checkpoint.invalidate_from("review")
+                self.checkpoint.mark_started("review")
+            self.run_review()
+            if self.checkpoint is not None:
+                self.checkpoint.mark_completed(
+                    "review",
+                    self.checkpoint.current_state(),
+                )
         if self.options.finalize_enabled:
-            self.run_finalize()
+            finalize_reused = False
+            if self.checkpoint is not None and not self.options.review_only:
+                finalize_state = self.checkpoint.current_state()
+                finalize_reused = self.checkpoint.can_reuse(
+                    "finalize",
+                    finalize_state,
+                )
+            if finalize_reused:
+                self._log_checkpoint_reuse("finalize")
+            else:
+                if self.checkpoint is not None:
+                    self.checkpoint.invalidate_from("finalize")
+                    self.checkpoint.mark_started("finalize")
+                self.run_finalize()
+                if self.checkpoint is not None:
+                    self.checkpoint.mark_completed(
+                        "finalize",
+                        self.checkpoint.current_state(),
+                    )
+
+    def _log_checkpoint_reuse(self, phase: str) -> None:
+        self.log.section(f"{phase} checkpoint")
+        self.log.write(
+            f"reused successful {phase} result for unchanged HEAD and working tree\n"
+        )
+        self.log.diagnostic(
+            f"session=checkpoint event=phase_skipped phase={phase} reason=unchanged_state"
+        )
+        if self.dashboard is not None:
+            self.dashboard.phase_reused(
+                phase,
+                f"Reused successful {phase} result for unchanged repository state",
+            )
 
     def run_tasks(self) -> None:
         if self.dashboard is not None:
@@ -486,7 +545,7 @@ class Runner:
     def _context(self) -> PromptContext:
         return PromptContext(
             plan_file=self.options.plan_file,
-            progress_file=self.options.progress_file,
+            progress_file=self.log.snapshot_for_prompt(),
             default_branch=self.options.default_branch,
             jira_task=self.options.jira_task,
             plan_kind=self.options.plan_kind,
@@ -1095,7 +1154,9 @@ class Runner:
 
         return PromptContext(
             plan_file=remap(context.plan_file),
-            progress_file=remap(context.progress_file) or context.progress_file,
+            # The bounded prompt snapshot is runner-owned and intentionally
+            # remains outside disposable review worktrees.
+            progress_file=context.progress_file,
             default_branch=context.default_branch,
             jira_task=context.jira_task,
             plan_kind=context.plan_kind,
@@ -1113,7 +1174,10 @@ class Runner:
         ignored = {
             self.options.progress_file.resolve(),
             statistics_path(self.options.progress_file).resolve(),
+            self.log.prompt_context_file.resolve(),
         }
+        if self.checkpoint is not None:
+            ignored.add(self.checkpoint.path.resolve())
         return {
             (repo_root / path).resolve()
             for path in git.dirty_paths()

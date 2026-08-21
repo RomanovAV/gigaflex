@@ -111,6 +111,19 @@ class ProgressDashboard:
             self._state["message"] = message or PHASE_LABELS.get(phase, phase.title())
             self._write_locked()
 
+    def phase_reused(self, phase: str, message: str = "") -> None:
+        with self._lock:
+            self._complete_running_phases_locked(except_phase=phase)
+            self._set_phase_status_locked(phase, "completed")
+            self._state["phase"] = phase
+            self._state["message"] = message or f"Reused {phase} checkpoint"
+            if phase == "review":
+                review = self._state["review"]
+                assert isinstance(review, dict)
+                review["status"] = "passed"
+                review["stage"] = "checkpoint"
+            self._write_locked()
+
     def task_started(self, number: int, title: str, iteration: int) -> None:
         with self._lock:
             self._refresh_plan_locked()

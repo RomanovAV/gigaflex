@@ -9,6 +9,7 @@ import unittest.mock
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "python"))
 
 from gigaflex.dashboard import ProgressDashboard
+from gigaflex.checkpoint import RunCheckpoint
 from gigaflex.executor import ExecResult, GigaCodeExecutor
 from gigaflex.git import GitService, ReviewWorktreeManager, TaskWorktreeManager
 from gigaflex.progress import ProgressLog
@@ -1566,7 +1567,7 @@ class RunnerTest(unittest.TestCase):
                 task_worktrees=TaskWorktreeManager(
                     GitService(repo),
                     diagnostic=ProgressLog(progress).diagnostic,
-                    ignored_paths=(Path("progress.txt"),),
+                    ignored_paths=(Path("progress.txt"), Path("context-progress.txt")),
                 ),
             )
 
@@ -1628,6 +1629,89 @@ class RunnerTest(unittest.TestCase):
             self.assertEqual(1, len(executor.sequential_prompts))
             self.assertIn(
                 "event=sequential_crash_retry",
+                progress.read_text(encoding="utf-8"),
+            )
+
+    def test_checkpoint_resumes_at_finalize_and_then_reuses_finalize(self) -> None:
+        with temporary_repo() as (repo, plan):
+            plan.write_text(
+                plan.read_text(encoding="utf-8").replace("- [ ]", "- [x]"),
+                encoding="utf-8",
+            )
+            git(repo, "add", str(plan))
+            git(repo, "commit", "-m", "feat: complete plan")
+            progress = repo / "progress.txt"
+            checkpoint_path = repo / "checkpoint.json"
+            checkpoint = RunCheckpoint(
+                checkpoint_path,
+                GitService(repo),
+                identity="plan:demo",
+                base_commit=GitService(repo).head_commit(),
+                ignored_paths=(
+                    Path("progress.txt"),
+                    Path("context-progress.txt"),
+                    Path("checkpoint.json"),
+                ),
+            )
+            checkpoint.mark_completed("review", checkpoint.current_state())
+            finalize_calls = 0
+
+            class UnexpectedReviewExecutor(FakeExecutor):
+                def run_batch(self, prompts):
+                    raise AssertionError("review should have been reused")
+
+            def finalize(_prompt):
+                nonlocal finalize_calls
+                finalize_calls += 1
+                return ExecResult(
+                    output=f"{FINALIZE_DONE}\n",
+                    signal=FINALIZE_DONE,
+                    returncode=0,
+                )
+
+            options = RunOptions(plan_file=plan, progress_file=progress)
+            runner = Runner(
+                options,
+                FakeExecutor(),  # type: ignore[arg-type]
+                ProgressLog(progress),
+                review_agent_executor=UnexpectedReviewExecutor(),  # type: ignore[arg-type]
+                finalize_executor=CallbackExecutor(finalize),  # type: ignore[arg-type]
+                checkpoint=checkpoint,
+            )
+            runner.run()
+
+            self.assertEqual(1, finalize_calls)
+            self.assertIn("reused successful review", progress.read_text(encoding="utf-8"))
+
+            reloaded = RunCheckpoint(
+                checkpoint_path,
+                GitService(repo),
+                identity="plan:demo",
+                base_commit=GitService(repo).head_commit(),
+                ignored_paths=(
+                    Path("progress.txt"),
+                    Path("context-progress.txt"),
+                    Path("checkpoint.json"),
+                ),
+            )
+            second_progress = ProgressLog(progress)
+            second = Runner(
+                options,
+                FakeExecutor(),  # type: ignore[arg-type]
+                second_progress,
+                review_agent_executor=UnexpectedReviewExecutor(),  # type: ignore[arg-type]
+                finalize_executor=CallbackExecutor(
+                    lambda _prompt: (_ for _ in ()).throw(
+                        AssertionError("finalize should have been reused")
+                    )
+                ),  # type: ignore[arg-type]
+                checkpoint=reloaded,
+            )
+            second.run()
+
+            self.assertEqual(1, finalize_calls)
+            self.assertIn(
+                "reused successful finalize",
                 progress.read_text(encoding="utf-8"),
             )
 

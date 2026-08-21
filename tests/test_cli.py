@@ -209,6 +209,26 @@ class CliTest(unittest.TestCase):
                 stdout.getvalue(),
             )
 
+    def test_dry_run_does_not_require_a_git_repository(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            plan = root / "plan.md"
+            plan.write_text(
+                "## Task 1: Demonstrate\n- [ ] Print the prompt\n",
+                encoding="utf-8",
+            )
+            original_cwd = Path.cwd()
+            stdout = io.StringIO()
+            try:
+                os.chdir(root)
+                with contextlib.redirect_stdout(stdout):
+                    code = main([str(plan), "--dry-run"])
+            finally:
+                os.chdir(original_cwd)
+
+            self.assertEqual(0, code)
+            self.assertIn("Selected task identity: 1: Demonstrate", stdout.getvalue())
+
     def test_completed_openspec_change_is_not_moved_and_prints_archive_hint(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -1253,6 +1273,92 @@ else:
             self.assertIn("docs: complete plan 20260612-smoke", latest)
             self.assertIn("docs/plans/completed/20260612-smoke.md", latest)
             self.assertEqual("", status)
+
+    def test_unchanged_second_plan_run_reuses_review_and_finalize_checkpoints(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            repo = root / "repo"
+            repo.mkdir()
+            home = root / "home"
+            calls = root / "calls.txt"
+            fake_gigacode = write_script(
+                root / "fake_gigacode.py",
+                f"""#!/usr/bin/env python3
+from pathlib import Path
+import sys
+
+with Path({str(calls)!r}).open("a", encoding="utf-8") as fh:
+    fh.write("call\\n")
+prompt = " ".join(sys.argv[1:]) + sys.stdin.read()
+if "Phase: final verification" in prompt:
+    print("<<<GIGAFLEX:FINALIZE_DONE>>>")
+else:
+    print("NO FINDINGS")
+""",
+            )
+            original_cwd = Path.cwd()
+            try:
+                os.chdir(repo)
+                subprocess.run(
+                    ["git", "init"],
+                    check=True,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                )
+                subprocess.run(
+                    ["git", "config", "user.email", "test@example.com"],
+                    check=True,
+                )
+                subprocess.run(
+                    ["git", "config", "user.name", "GigaFlex Test"],
+                    check=True,
+                )
+                plan = repo / "plan.md"
+                plan.write_text(
+                    "## Task 1: Complete\n- [x] Already complete\n",
+                    encoding="utf-8",
+                )
+                (repo / ".gitignore").write_text(".gigaflex/\n", encoding="utf-8")
+                (repo / ".gigaflex").mkdir()
+                (repo / ".gigaflex/config").write_text(
+                    "[gigaflex]\n",
+                    encoding="utf-8",
+                )
+                subprocess.run(["git", "add", "."], check=True)
+                subprocess.run(
+                    ["git", "commit", "-m", "initial"],
+                    check=True,
+                    stdout=subprocess.PIPE,
+                )
+                argv = [
+                    str(plan),
+                    "--gigacode-command",
+                    str(fake_gigacode),
+                    "--no-branch",
+                    "--no-move-plan",
+                    "--no-parallel-review",
+                ]
+                with (
+                    patch.dict(os.environ, {"HOME": str(home)}),
+                    contextlib.redirect_stdout(io.StringIO()),
+                ):
+                    first_code = main(argv)
+                    second_code = main(argv)
+            finally:
+                os.chdir(original_cwd)
+
+            self.assertEqual(0, first_code)
+            self.assertEqual(0, second_code)
+            self.assertEqual(2, len(calls.read_text(encoding="utf-8").splitlines()))
+            progress = repo / ".gigaflex/progress/progress-plan.txt"
+            self.assertIn(
+                "reused successful review",
+                progress.read_text(encoding="utf-8"),
+            )
+            self.assertIn(
+                "reused successful finalize",
+                progress.read_text(encoding="utf-8"),
+            )
 
     def test_plan_run_writes_token_and_timing_statistics(self) -> None:
         with tempfile.TemporaryDirectory() as tmp, tempfile.TemporaryDirectory() as home_tmp:

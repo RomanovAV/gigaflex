@@ -15,7 +15,7 @@ import shlex
 import sys
 import threading
 import time
-from typing import Callable, Optional
+from typing import Callable, Iterable, Optional
 
 from .defaults import DEFAULT_GIGACODE_ARGS
 from .signals import detect_signal
@@ -60,6 +60,14 @@ DEPENDENCY_CRASH_PATTERNS = (
     "libsecret-CRITICAL",
     "secret_value_get_text",
 )
+
+
+def is_dependency_crash(returncode: int, output: str) -> bool:
+    """Return whether a process failure matches a known dependency crash."""
+    return (
+        returncode in DEPENDENCY_CRASH_RETURN_CODES
+        or matches_any(output, DEPENDENCY_CRASH_PATTERNS)
+    )
 
 
 @dataclass
@@ -686,10 +694,7 @@ class GigaCodeExecutor:
         failure_text = f"{text}\n{error_text}"
         api_error = _extract_api_error(text) or _extract_api_error(error_text)
         failed = returncode != 0 or timed_out or idle_timed_out or bool(api_error)
-        dependency_crash = failed and (
-            returncode in DEPENDENCY_CRASH_RETURN_CODES
-            or matches_any(failure_text, DEPENDENCY_CRASH_PATTERNS)
-        )
+        dependency_crash = failed and is_dependency_crash(returncode, failure_text)
         result = ExecResult(
             output=text,
             error_output=error_text,
@@ -868,7 +873,7 @@ class GigaCodeExecutor:
             self.event_callback(session, event, fields)
 
 
-def matches_any(text: str, patterns: list[str]) -> bool:
+def matches_any(text: str, patterns: Iterable[str]) -> bool:
     lowered = text.lower()
     return any(pattern and pattern.lower() in lowered for pattern in patterns)
 

@@ -20,7 +20,10 @@ This is a small standalone rewrite of the useful ralphex core:
 - run each task iteration in a disposable snapshot worktree and promote only
   its validated linear commits; pre-existing dirty files stay outside task
   commits, and overlapping task/user changes stop before promotion
-- keep detailed agent output in progress logs and generate a live local dashboard
+- keep detailed agent output in progress logs, provide agents only a bounded
+  current-run snapshot, and generate a live local dashboard
+- persist successful phase checkpoints and resume interrupted runs without
+  repeating review or finalize when HEAD and the working tree are unchanged
 - detect gigaflex completion signals
 - run review and a default finalize pass
 - run five specialist review agents in parallel in disposable detached
@@ -80,6 +83,18 @@ the current review status and pass history, parallel review sessions, executor
 retries, failures, elapsed time, and known token usage. The JSON file exposes
 the same state for future integrations. The full
 agent transcript and executor diagnostics remain in `progress-my-feature.txt`.
+
+Prompts do not point agents at that append-only historical transcript. GigaFlex
+refreshes `context-my-feature.txt` with at most the last 200 lines/50,000
+characters written by the current process and labels it as a static prompt-time
+snapshot. Earlier runs therefore cannot silently grow task and review context.
+
+Successful phases are recorded in `checkpoint-my-feature.json`. After an
+interruption, a normal plan run reuses a completed review and resumes at
+finalize—or reuses finalize too—only when the plan identity, immutable base,
+current `HEAD`, and a snapshot of the working tree still match exactly. Any
+repository change invalidates the affected checkpoint. An explicit `--review`
+request always performs a fresh review.
 
 Run a standard local OpenSpec `spec-driven` change by passing its change
 directory:
@@ -233,6 +248,13 @@ this Python module from the affected project directory:
 ```bash
 PYTHONPATH=/path/to/gigaflex/python python3 -m gigaflex.diagnose
 ```
+
+The diagnostic also launches three simultaneous captured probes and stores
+their outputs separately. This makes an `exit 139`/`SIGSEGV` or `libsecret`
+failure that appears only under parallel load visible in the diagnosis. Change
+the fan-out with `--parallel-workers N`, or pass `--parallel-workers 0` to skip
+that probe. If the dependency crash is confirmed, refresh GigaCode credentials
+and use `--review-workers 1` or `--no-parallel-review` as a temporary fallback.
 
 To reproduce one exact task prompt once:
 
@@ -402,7 +424,8 @@ Review behavior:
 - reviewers only inspect and report findings; they do not edit or commit
 - synthesis uses `task_model`, verifies reported findings, and is the only
   stage that may fix, test, and commit deliverable changes; runner-owned plan,
-  progress, status, and statistics files remain read-only during synthesis
+  progress, prompt-context, checkpoint, status, and statistics files remain
+  read-only during synthesis
 - finalize runs after a successful review by default; pass `--no-finalize` to
   skip the final validation/cleanup pass
 - fallback: pass `--no-parallel-review` to use one read-only reviewer followed

@@ -81,7 +81,7 @@ Never claim success when validation or git commit failed.
 If the selected task cannot be completed after reasonable fixes, briefly explain the blocker and output exactly this as the final non-empty line:
 <<<GIGAFLEX:TASK_FAILED>>>
 
-Progress log: {progress_file}
+Bounded current-run progress snapshot: {progress_file}
 Default branch: {default_branch}
 
 Plain text output only.
@@ -230,7 +230,7 @@ Read changed files in full context. For relevant untracked files, read the file 
 Report confirmed issues only: incorrect or incomplete implementation, bugs, broken requirements, missing validation, regressions, security problems, and unnecessary complexity.
 Do not modify files, run mutating commands, or make commits.
 
-Progress log: {progress_file}
+Bounded current-run progress snapshot: {progress_file}
 Plain text output only.
 """
 
@@ -272,7 +272,7 @@ If confirmed issues exist:
 - commit with message: fix: address review findings
 - report a structured decision for every supplied finding
 
-Progress log: {progress_file}
+Bounded current-run progress snapshot: {progress_file}
 Plain text output only.
 """
 
@@ -417,7 +417,7 @@ If final verification succeeds, briefly summarize the checks and output exactly 
 If validation fails or the branch cannot be left clean after reasonable fixes, explain the blocker and output exactly this as the final non-empty line:
 <<<GIGAFLEX:FINALIZE_FAILED>>>
 
-Progress log: {progress_file}
+Bounded current-run progress snapshot: {progress_file}
 Plain text output only.
 """
 

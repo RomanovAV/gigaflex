@@ -156,6 +156,26 @@ class ProgressDashboardTest(unittest.TestCase):
                 session["error"],
             )
 
+    def test_reused_review_checkpoint_is_visible(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            dashboard = ProgressDashboard(
+                root / "status.json",
+                root / "status.html",
+                name="review",
+                plan_file=None,
+            )
+            dashboard.start()
+            dashboard.phase_reused("review", "Reused successful review")
+
+            self.assertEqual("completed", dashboard.state["phases"][1]["status"])
+            self.assertEqual("passed", dashboard.state["review"]["status"])
+            self.assertEqual("checkpoint", dashboard.state["review"]["stage"])
+            self.assertIn(
+                "Reused successful review",
+                (root / "status.html").read_text(encoding="utf-8"),
+            )
+
     def test_tracks_review_status_and_attempt_history(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

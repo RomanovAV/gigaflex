@@ -12,7 +12,7 @@ from unittest.mock import MagicMock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "python"))
 
-from gigaflex.executor import ExecResult, GigaCodeExecutor
+from gigaflex.executor import ExecResult, GigaCodeExecutor, is_dependency_crash
 from gigaflex.stats import RunStatistics
 
 
@@ -724,6 +724,16 @@ raise SystemExit(139)
 
             self.assertTrue(result.dependency_crash)
             self.assertFalse(result.ok)
+
+    def test_dependency_crash_classifier_handles_signal_and_libsecret_text(self) -> None:
+        self.assertTrue(is_dependency_crash(-11, ""))
+        self.assertTrue(
+            is_dependency_crash(
+                1,
+                "libsecret-CRITICAL: secret_value_get_text assertion failed",
+            )
+        )
+        self.assertFalse(is_dependency_crash(1, "ordinary command failure"))
 
     def test_marks_api_error_as_failure_when_process_exits_zero(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
