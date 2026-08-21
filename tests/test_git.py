@@ -9,6 +9,7 @@ from gigaflex.git import (
     BranchBaseline,
     GitError,
     GitService,
+    REVIEW_PATCH_FRAGMENT_CHARS,
     ReviewWorktreeManager,
     TaskWorktreeManager,
     jira_branch_name,
@@ -88,6 +89,9 @@ class GitServiceTest(unittest.TestCase):
 
             with manager.create(["quality", "testing"]) as worktrees:
                 created_paths = list(worktrees.paths.values())
+                manifest = worktrees.review_manifest
+                packet = manifest.parent
+                manifest_text = manifest.read_text(encoding="utf-8")
                 self.assertEqual(head_before, git.head_commit())
                 self.assertEqual(
                     "modified\n",
@@ -100,13 +104,27 @@ class GitServiceTest(unittest.TestCase):
                 self.assertFalse((created_paths[0] / "ignored.txt").exists())
                 self.assertEqual("", GitService(created_paths[0]).current_branch())
                 self.assertFalse(GitService(created_paths[0]).is_dirty())
+                self.assertIn('path: "tracked.txt"', manifest_text)
+                self.assertIn('path: "untracked.txt"', manifest_text)
+                fragments = list((packet / "patches").glob("*.patch"))
+                self.assertGreaterEqual(len(fragments), 2)
+                self.assertTrue(
+                    all(
+                        len(path.read_text(encoding="utf-8"))
+                        <= REVIEW_PATCH_FRAGMENT_CHARS
+                        for path in fragments
+                    )
+                )
 
             self.assertTrue(all(not path.exists() for path in created_paths))
+            self.assertFalse(packet.exists())
             self.assertEqual(head_before, git.head_commit())
             self.assertEqual(status_before, git.run("status", "--short").stdout)
             worktree_list = git.run("worktree", "list", "--porcelain").stdout
             self.assertNotIn("gigaflex-review-", worktree_list)
             self.assertIn("event=snapshot_created", "\n".join(diagnostics))
+            self.assertIn("event=packet_created", "\n".join(diagnostics))
+            self.assertIn("event=packet_removed", "\n".join(diagnostics))
             self.assertIn("event=removed", "\n".join(diagnostics))
 
     def test_review_worktrees_are_removed_when_review_raises(self) -> None:
@@ -135,18 +153,62 @@ class GitServiceTest(unittest.TestCase):
                 temp_parent=tmp_path,
             )
             created_path = None
+            packet = None
 
             with self.assertRaisesRegex(RuntimeError, "review failed"):
                 with manager.create(["quality"]) as worktrees:
                     created_path = worktrees.paths["quality"]
+                    packet = worktrees.review_manifest.parent
                     raise RuntimeError("review failed")
 
             assert created_path is not None
+            assert packet is not None
             self.assertFalse(created_path.exists())
+            self.assertFalse(packet.exists())
             self.assertNotIn(
                 "gigaflex-review-",
                 git.run("worktree", "list", "--porcelain").stdout,
             )
+
+    def test_review_packet_is_removed_when_worktree_prune_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            repo = tmp_path / "repo"
+            repo.mkdir()
+            git = GitService(repo)
+            git.run("init")
+            (repo / "tracked.txt").write_text("tracked\n", encoding="utf-8")
+            git.run("add", ".")
+            git.run(
+                "commit",
+                "-m",
+                "initial",
+                env={
+                    "GIT_AUTHOR_NAME": "Test",
+                    "GIT_AUTHOR_EMAIL": "test@example.com",
+                    "GIT_COMMITTER_NAME": "Test",
+                    "GIT_COMMITTER_EMAIL": "test@example.com",
+                },
+            )
+            diagnostics: list[str] = []
+            manager = ReviewWorktreeManager(
+                git,
+                diagnostic=diagnostics.append,
+                temp_parent=tmp_path,
+            )
+            packet = None
+
+            def failed_prune() -> None:
+                raise GitError("simulated prune failure")
+
+            git.prune_worktrees = failed_prune  # type: ignore[method-assign]
+            with self.assertRaisesRegex(GitError, "simulated prune failure"):
+                with manager.create(["quality"]) as worktrees:
+                    packet = worktrees.review_manifest.parent
+
+            assert packet is not None
+            self.assertFalse(packet.exists())
+            self.assertIn("event=packet_removed", "\n".join(diagnostics))
 
     def test_task_worktree_promotes_only_committed_delta_and_preserves_dirty_state(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

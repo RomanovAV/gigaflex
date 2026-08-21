@@ -370,6 +370,11 @@ class Runner:
                     decision_memory=self._review_decision_memory_snapshot(),
                     followup_scope=active_scope,
                 ),
+                base_ref=(
+                    active_scope.base_commit
+                    if active_scope is not None and active_scope.base_commit
+                    else self.options.default_branch
+                ),
             )
             self._prefix_new_commits(head_before, "review")
             if not result.ok:
@@ -1240,15 +1245,21 @@ class Runner:
         self,
         name: str,
         render_prompt: Callable[[PromptContext], str],
+        *,
+        base_ref: Optional[str] = None,
     ) -> ExecResult:
         if self.review_worktrees is None:
             return self.review_agent_executor.run(render_prompt(self._context()))
 
-        with self.review_worktrees.create([name]) as worktrees:
+        with self.review_worktrees.create(
+            [name],
+            base_ref=base_ref or self.options.default_branch,
+        ) as worktrees:
             worktree = worktrees.paths[name]
             context = self._context_for_review_worktree(
                 worktree,
                 worktrees.repo_root,
+                worktrees.review_manifest,
             )
             return self.review_agent_executor.run(
                 render_prompt(context),
@@ -1278,7 +1289,15 @@ class Runner:
             results = self.review_agent_executor.run_batch(prompts)
             return self._retry_crashed_review_agents(prompts, results)
 
-        with self.review_worktrees.create(agents) as worktrees:
+        packet_base_ref = (
+            followup_scope.base_commit
+            if followup_scope is not None and followup_scope.base_commit
+            else self.options.default_branch
+        )
+        with self.review_worktrees.create(
+            agents,
+            base_ref=packet_base_ref,
+        ) as worktrees:
             prompts = {
                 name: render_review_agent_prompt(
                     self.options.prompts.review_agent,
@@ -1287,6 +1306,7 @@ class Runner:
                     self._context_for_review_worktree(
                         worktrees.paths[name],
                         worktrees.repo_root,
+                        worktrees.review_manifest,
                     ),
                     decision_memory=self._review_decision_memory_snapshot(),
                     followup_scope=followup_scope,
@@ -1334,6 +1354,7 @@ class Runner:
         self,
         worktree: Path,
         repo_root: Path,
+        review_manifest: Path,
     ) -> PromptContext:
         context = self._context()
 
@@ -1360,6 +1381,7 @@ class Runner:
                 for path in context.plan_context_files
                 if (remapped := remap(path)) is not None
             ),
+            review_manifest=review_manifest,
         )
 
     def _uncommitted_paths(self) -> set[Path]:

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import json
 import os
 from pathlib import Path
 import re
@@ -15,6 +16,7 @@ BRANCH_SLUG_RE = re.compile(r"[^A-Za-z0-9._-]+")
 COMMIT_IDENTITY_RE = re.compile(
     r"^(.*) <([^<>]*)> (\d+) ([+-]\d{4})$"
 )
+REVIEW_PATCH_FRAGMENT_CHARS = 16_000
 
 
 class GitError(RuntimeError):
@@ -574,6 +576,7 @@ class ReviewWorktreeSet:
     snapshot_commit: str
     paths: dict[str, Path]
     repo_root: Path
+    review_manifest: Path
 
 
 @dataclass
@@ -586,11 +589,16 @@ class ReviewWorktreeManager:
     def repo_root(self) -> Path:
         return self.git.repo_root()
 
-    def create(self, names: Iterable[str]) -> "_ReviewWorktreeContext":
+    def create(
+        self,
+        names: Iterable[str],
+        *,
+        base_ref: str = "HEAD",
+    ) -> "_ReviewWorktreeContext":
         unique_names = tuple(dict.fromkeys(names))
         if not unique_names:
             raise ValueError("at least one review workspace name is required")
-        return _ReviewWorktreeContext(self, unique_names)
+        return _ReviewWorktreeContext(self, unique_names, base_ref)
 
     def report(self, line: str) -> None:
         try:
@@ -601,11 +609,18 @@ class ReviewWorktreeManager:
 
 
 class _ReviewWorktreeContext:
-    def __init__(self, manager: ReviewWorktreeManager, names: tuple[str, ...]) -> None:
+    def __init__(
+        self,
+        manager: ReviewWorktreeManager,
+        names: tuple[str, ...],
+        base_ref: str,
+    ) -> None:
         self.manager = manager
         self.names = names
+        self.base_ref = base_ref
         self.root: Optional[Path] = None
         self.worktrees: list[Path] = []
+        self.review_packet: Optional[Path] = None
 
     def __enter__(self) -> ReviewWorktreeSet:
         parent = str(self.manager.temp_parent) if self.manager.temp_parent else None
@@ -618,6 +633,7 @@ class _ReviewWorktreeContext:
                 "session=review-worktree event=snapshot_created "
                 f"commit={snapshot} workspaces={len(self.names)}"
             )
+            review_manifest = self._create_review_packet(snapshot)
             paths: dict[str, Path] = {}
             for index, name in enumerate(self.names, start=1):
                 slug = worktree_dir_name(name)
@@ -633,6 +649,7 @@ class _ReviewWorktreeContext:
                 snapshot_commit=snapshot,
                 paths=paths,
                 repo_root=self.manager.repo_root,
+                review_manifest=review_manifest,
             )
         except BaseException:
             self._cleanup()
@@ -663,19 +680,116 @@ class _ReviewWorktreeContext:
                 )
             except (OSError, GitError) as exc:
                 cleanup_errors.append(f"{path}: {exc}")
-        self.manager.git.prune_worktrees()
+        try:
+            self.manager.git.prune_worktrees()
+        except (OSError, GitError) as exc:
+            cleanup_errors.append(f"git worktree prune: {exc}")
+        packet = self.review_packet
         try:
             if root.exists():
                 shutil.rmtree(root)
         except OSError as exc:
             cleanup_errors.append(f"{root}: {exc}")
+        else:
+            if packet is not None:
+                self.manager.report(
+                    "session=review-worktree event=packet_removed "
+                    f"path={str(packet)!r}"
+                )
         self.worktrees.clear()
+        self.review_packet = None
         self.root = None
         if cleanup_errors:
             raise GitError(
                 "could not remove disposable review worktrees: "
                 + "; ".join(cleanup_errors)
             )
+
+    def _create_review_packet(self, snapshot: str) -> Path:
+        assert self.root is not None
+        base_commit = self.manager.git.resolve_commit(self.base_ref)
+        packet = self.root / "review-context"
+        patches = packet / "patches"
+        patches.mkdir(parents=True)
+        self.review_packet = packet
+
+        changed_paths = sorted(
+            self.manager.git.changed_paths_between(base_commit, snapshot)
+        )
+        status = self.manager.git.run(
+            "status",
+            "--short",
+            "--untracked-files=all",
+        ).stdout
+        stat = self.manager.git.run(
+            "diff",
+            "--stat",
+            "--no-ext-diff",
+            base_commit,
+            snapshot,
+            "--",
+        ).stdout
+        entries: list[str] = []
+        fragment_count = 0
+        for file_index, path in enumerate(changed_paths, start=1):
+            patch = self.manager.git.run(
+                "diff",
+                "--no-ext-diff",
+                "--no-textconv",
+                "--no-renames",
+                base_commit,
+                snapshot,
+                "--",
+                str(path),
+            ).stdout
+            chunks = [
+                patch[index:index + REVIEW_PATCH_FRAGMENT_CHARS]
+                for index in range(0, len(patch), REVIEW_PATCH_FRAGMENT_CHARS)
+            ] or ["(No textual diff is available for this changed path.)\n"]
+            fragment_paths: list[Path] = []
+            for chunk_index, chunk in enumerate(chunks, start=1):
+                fragment = patches / f"{file_index:04d}-{chunk_index:03d}.patch"
+                fragment.write_text(chunk, encoding="utf-8")
+                fragment_paths.append(fragment)
+                fragment_count += 1
+            entries.extend(
+                (
+                    f"path: {json.dumps(str(path), ensure_ascii=False)}",
+                    f"fragments: {len(fragment_paths)}",
+                    *(f"  - {fragment}" for fragment in fragment_paths),
+                    "",
+                )
+            )
+
+        manifest = packet / "manifest.txt"
+        manifest.write_text(
+            "\n".join(
+                (
+                    "GigaFlex bounded review packet",
+                    f"base_commit: {base_commit}",
+                    f"snapshot_commit: {snapshot}",
+                    f"changed_paths: {len(changed_paths)}",
+                    f"patch_fragments: {fragment_count}",
+                    f"max_fragment_chars: {REVIEW_PATCH_FRAGMENT_CHARS}",
+                    "",
+                    "Working-tree status captured before the snapshot:",
+                    status.rstrip() or "(clean)",
+                    "",
+                    "Overall diff stat:",
+                    stat.rstrip() or "(no diff stat)",
+                    "",
+                    "Changed paths and bounded patch fragments:",
+                    *entries,
+                )
+            ).rstrip() + "\n",
+            encoding="utf-8",
+        )
+        self.manager.report(
+            "session=review-worktree event=packet_created "
+            f"path={str(packet)!r} files={len(changed_paths)} "
+            f"fragments={fragment_count} fragment_chars={REVIEW_PATCH_FRAGMENT_CHARS}"
+        )
+        return manifest
 
 
 @dataclass(frozen=True)

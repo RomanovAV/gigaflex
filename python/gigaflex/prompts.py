@@ -19,6 +19,7 @@ class PromptContext:
     plan_kind: str = "gigaflex"
     plan_source: Optional[Path] = None
     plan_context_files: tuple[Path, ...] = ()
+    review_manifest: Optional[Path] = None
 
     @property
     def goal(self) -> str:
@@ -225,15 +226,19 @@ REVIEW_PROMPT = """You are the review agent.
 
 Review {goal}.
 
-Run:
+Bounded review manifest: {review_manifest}
+
+When the runner-generated manifest is available, use it as the complete changed-file index and inspect its size-capped patch fragments one at a time. If it is unavailable, begin with only bounded discovery commands:
 - git status --short
 - git log {base_ref}..HEAD --oneline
 - git diff {base_ref}...HEAD --stat
-- git diff {base_ref}...HEAD
+- git diff {base_ref}...HEAD --name-only
 - git diff --cached --stat
-- git diff --cached
+- git diff --cached --name-only
 - git diff --stat
-- git diff
+- git diff --name-only
+
+Never request the full repository diff in one command. Use path-limited diffs for one relevant file at a time.
 
 Review the committed branch diff plus any staged, unstaged, and untracked files shown by status.
 Read changed files in full context. For relevant untracked files, read the file contents directly.
@@ -251,14 +256,18 @@ Review {goal}.
 Agent focus:
 {agent_focus}
 
-Run these commands first:
+Bounded review manifest: {review_manifest}
+
+When the runner-generated manifest is available, use it as the complete changed-file index and inspect its size-capped patch fragments one at a time. If it is unavailable, begin with only bounded discovery commands:
 - git status --short
 - git diff {base_ref}...HEAD --stat
-- git diff {base_ref}...HEAD
+- git diff {base_ref}...HEAD --name-only
 - git diff --cached --stat
-- git diff --cached
+- git diff --cached --name-only
 - git diff --stat
-- git diff
+- git diff --name-only
+
+Never request the full repository diff in one command. Use path-limited diffs for one relevant file at a time.
 
 Review the committed branch diff plus any staged, unstaged, and untracked files shown by status.
 Read changed files in full context before reporting findings. For relevant untracked files, read the file contents directly.
@@ -326,6 +335,16 @@ Severity meanings:
 
 Do not output introductory text, summaries, markdown fences, bullets, or text outside the blocks.
 Every finding must identify a concrete, reproducible issue. A suspicion, style preference, or optional improvement is not a finding.
+"""
+
+BOUNDED_REVIEW_PACKET_GUIDANCE = """Runner-generated bounded review context:
+- manifest: `{review_manifest}`
+- read the manifest first; it lists every changed path and its bounded patch fragments
+- this later instruction replaces any earlier instruction to run a repository-wide `git diff`, `git diff --cached`, or unbounded file dump
+- do not run repository-wide diff commands; inspect one listed patch fragment at a time
+- each fragment is size-capped by the runner; select files relevant to the assigned focus, while using the complete manifest to maintain coverage
+- read a changed source file directly only when its surrounding context is necessary to verify a concrete issue
+- the manifest and fragments are temporary runner-owned files outside the repository worktree and are deleted after this review batch
 """
 
 REVIEW_DECISION_MEMORY_GUIDANCE = """Runner-maintained prior review decision memory:
@@ -494,6 +513,7 @@ LEGACY_DEFAULT_HASHES = {
         "fc403fd697eb8fcb51d57172c501e81716aa695c311fb50fc10be31fcb5649fb",
     },
     "review": {
+        "beac72800997cd50b25dcefa58a250900c973b41ae01760c75a1b12b2752c64a",
         "6e4d607d9c0b08f3b3102b77be952438905b4616ace7f92f20f1ef4f01d43e5a",
         "7a898f51938f284971665170fd68bd95b2a0298113babe683cee67b2c70e1ed3",
         "d41b30a8b85be54cd259a3bba8b6b2f334b1129d8d79ad5ad71e3de9ddab8f77",
@@ -697,6 +717,7 @@ def _context_values(context: PromptContext) -> dict[str, object]:
         "plan_kind": context.plan_kind,
         "plan_source": context.plan_source or context.plan_file or "(no plan source)",
         "plan_context_files": "\n".join(str(path) for path in context.plan_context_files),
+        "review_manifest": context.review_manifest or "(no review packet available)",
     }
 
 
@@ -747,6 +768,7 @@ def render_review_agent_prompt(
         decision_memory=decision_memory,
         followup_scope=followup_scope,
         original_base_ref=context.default_branch,
+        review_manifest=context.review_manifest,
     )
 
 
@@ -761,6 +783,7 @@ def render_review_prompt(
         decision_memory=decision_memory,
         followup_scope=followup_scope,
         original_base_ref=context.default_branch,
+        review_manifest=context.review_manifest,
     )
 
 
@@ -907,6 +930,7 @@ def _with_review_guards(
     decision_memory: tuple[ReviewDecisionRecord, ...] = (),
     followup_scope: Optional[FollowupReviewScope] = None,
     original_base_ref: str = "",
+    review_manifest: Optional[Path] = None,
 ) -> str:
     rendered = _with_guidance(prompt, READ_ONLY_REVIEW_GUARD)
     if include_deliverable_guidance:
@@ -918,6 +942,13 @@ def _with_review_guards(
             _render_followup_review_guidance(
                 followup_scope,
                 original_base_ref=original_base_ref,
+            ),
+        )
+    if review_manifest is not None:
+        rendered = _with_guidance(
+            rendered,
+            BOUNDED_REVIEW_PACKET_GUIDANCE.format(
+                review_manifest=review_manifest,
             ),
         )
     return _with_guidance(rendered, REVIEW_OUTPUT_CONTRACT)

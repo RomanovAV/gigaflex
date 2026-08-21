@@ -487,11 +487,21 @@ class RunnerTest(unittest.TestCase):
             def __init__(self) -> None:
                 super().__init__()
                 self.workdirs = {}
+                self.review_packet = None
 
             def run_batch(self, prompts, *, workdirs=None):
                 assert workdirs is not None
                 self.batch_prompts.append(prompts)
                 self.workdirs = dict(workdirs)
+                first_worktree = next(iter(workdirs.values()))
+                self.review_packet = first_worktree.parent / "review-context"
+                manifest = self.review_packet / "manifest.txt"
+                assert manifest.is_file()
+                assert all(str(manifest) in prompt for prompt in prompts.values())
+                assert all(
+                    "do not run repository-wide diff commands" in prompt
+                    for prompt in prompts.values()
+                )
                 for path in workdirs.values():
                     (path / "reviewer-write.txt").write_text(
                         "isolated\n",
@@ -514,6 +524,7 @@ class RunnerTest(unittest.TestCase):
                 RunOptions(
                     plan_file=plan,
                     progress_file=repo / "progress.txt",
+                    default_branch=GitService(repo).head_commit(),
                     review_only=True,
                     parallel_review=True,
                     finalize_enabled=False,
@@ -528,11 +539,15 @@ class RunnerTest(unittest.TestCase):
 
             self.assertEqual(set(REVIEW_AGENTS), set(executor.workdirs))
             self.assertTrue(all(not path.exists() for path in executor.workdirs.values()))
+            assert executor.review_packet is not None
+            self.assertFalse(executor.review_packet.exists())
             self.assertFalse((repo / "reviewer-write.txt").exists())
             for name, prompt in executor.batch_prompts[0].items():
                 self.assertIn(str(executor.workdirs[name] / "plan.md"), prompt)
             progress = (repo / "progress.txt").read_text(encoding="utf-8")
             self.assertIn("event=snapshot_created", progress)
+            self.assertIn("event=packet_created", progress)
+            self.assertIn("event=packet_removed", progress)
             self.assertIn("event=removed", progress)
 
     def test_single_review_uses_and_removes_disposable_worktree(self) -> None:
@@ -558,6 +573,7 @@ class RunnerTest(unittest.TestCase):
                 RunOptions(
                     plan_file=plan,
                     progress_file=repo / "progress.txt",
+                    default_branch=GitService(repo).head_commit(),
                     review_only=True,
                     parallel_review=False,
                     finalize_enabled=False,

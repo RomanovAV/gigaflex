@@ -430,6 +430,11 @@ Review behavior:
 - standalone `--review` restores that stored commit; when none is stored, pass
   `--base-ref REF` once instead of silently reviewing against `main` or `master`
 - reviewers only inspect and report findings; they do not edit or commit
+- each review batch receives a temporary bounded packet: one manifest plus
+  path-specific patch fragments capped at 16,000 characters. Reviewers read
+  those fragments instead of requesting a repository-wide diff, and the whole
+  packet is removed with the disposable review worktrees after both successful
+  and failed review batches
 - synthesis uses `task_model`, verifies reported findings, and is the only
   stage that may fix, test, and commit deliverable changes; runner-owned plan,
   progress, prompt-context, checkpoint, status, and statistics files remain

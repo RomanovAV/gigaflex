@@ -223,6 +223,25 @@ class PromptTemplatesTest(unittest.TestCase):
         self.assertIn("untracked files", DEFAULT_PROMPTS.review_agent)
         self.assertIn("path-limited diffs", DEFAULT_PROMPTS.review_synthesis)
 
+    def test_review_packet_overrides_repository_wide_diff_commands(self) -> None:
+        manifest = Path("/tmp/gigaflex-review/context/manifest.txt")
+        prompt = render_review_prompt(
+            DEFAULT_PROMPTS.review,
+            PromptContext(
+                Path("plan.md"),
+                Path("progress.txt"),
+                "main",
+                review_manifest=manifest,
+            ),
+        )
+
+        self.assertIn(str(manifest), prompt)
+        self.assertIn(
+            "replaces any earlier instruction to run a repository-wide `git diff`",
+            prompt,
+        )
+        self.assertIn("deleted after this review batch", prompt)
+
     def test_review_prompt_preserves_strict_code_review_for_mixed_work(self) -> None:
         prompt = render_review_prompt(
             DEFAULT_PROMPTS.review,
