@@ -148,7 +148,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--allow-dirty",
         action="store_true",
-        help="allow uncommitted changes at startup and between run phases",
+        help=(
+            "allow uncommitted changes; task-touched dirty paths are adopted "
+            "into the task commit"
+        ),
     )
     parser.add_argument("--no-move-plan", action="store_true", help="do not move completed plan to completed/")
     parser.add_argument("--no-commit-plan", action="store_true", help="do not commit newly created plans")

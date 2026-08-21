@@ -1717,6 +1717,10 @@ class RunnerTest(unittest.TestCase):
             git(repo, "add", ".gitignore", "user.txt")
             git(repo, "commit", "-m", "test: add tracked files")
             (repo / "user.txt").write_text("user change\n", encoding="utf-8")
+            plan.write_text(
+                plan.read_text(encoding="utf-8") + "\nUser-authored context.\n",
+                encoding="utf-8",
+            )
             main_head_during_call: list[str] = []
 
             class IsolatedTaskExecutor:
@@ -1763,6 +1767,21 @@ class RunnerTest(unittest.TestCase):
             self.assertEqual("done\n", (repo / "result.txt").read_text(encoding="utf-8"))
             self.assertEqual("user change\n", (repo / "user.txt").read_text(encoding="utf-8"))
             self.assertIn("- [x]", plan.read_text(encoding="utf-8"))
+            self.assertIn("User-authored context.", plan.read_text(encoding="utf-8"))
+            self.assertEqual(
+                " M user.txt\n",
+                GitService(repo).run(
+                    "status",
+                    "--short",
+                    "--",
+                    "user.txt",
+                    "plan.md",
+                ).stdout,
+            )
+            self.assertIn(
+                "event=adopted_preexisting_changes count=1 paths='plan.md'",
+                progress.read_text(encoding="utf-8"),
+            )
 
     def test_parallel_review_retries_dependency_crash_sequentially(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

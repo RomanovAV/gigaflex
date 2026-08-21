@@ -195,7 +195,187 @@ class GitServiceTest(unittest.TestCase):
             self.assertEqual(status_before, git.run("status", "--short").stdout)
             self.assertIn("event=promoted", "\n".join(diagnostics))
 
-    def test_task_worktree_rejects_overlap_with_user_changes_without_mutating_main(self) -> None:
+    def test_task_worktree_adopts_touched_dirty_file_into_task_commit(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            repo = tmp_path / "repo"
+            repo.mkdir()
+            git = GitService(repo)
+            git.run("init")
+            git.run("config", "user.email", "test@example.com")
+            git.run("config", "user.name", "GigaFlex Test")
+            tracked = repo / "tracked.txt"
+            tracked.write_text("original\n", encoding="utf-8")
+            staged = repo / "staged.txt"
+            staged.write_text("original\n", encoding="utf-8")
+            untouched = repo / "untouched.txt"
+            untouched.write_text("original\n", encoding="utf-8")
+            git.run("add", ".")
+            git.run("commit", "-m", "initial")
+            tracked.write_text("user change\n", encoding="utf-8")
+            staged.write_text("staged user change\n", encoding="utf-8")
+            untouched.write_text("staged user change\n", encoding="utf-8")
+            git.run("add", "staged.txt", "untouched.txt")
+            head_before = git.head_commit()
+            diagnostics: list[str] = []
+            manager = TaskWorktreeManager(
+                git,
+                diagnostic=diagnostics.append,
+                temp_parent=tmp_path,
+            )
+
+            with manager.create("task 1") as workspace:
+                task_git = GitService(workspace.path)
+                (workspace.path / "tracked.txt").write_text(
+                    "user change\nagent change\n",
+                    encoding="utf-8",
+                )
+                (workspace.path / "staged.txt").write_text(
+                    "staged user change\nagent change\n",
+                    encoding="utf-8",
+                )
+                task_git.run("add", "tracked.txt", "staged.txt")
+                task_git.run("commit", "-m", "feat: overlap")
+                workspace.promote(task_git.head_commit())
+
+            self.assertNotEqual(head_before, git.head_commit())
+            self.assertEqual(
+                "user change\nagent change\n",
+                tracked.read_text(encoding="utf-8"),
+            )
+            self.assertEqual(
+                "user change\nagent change\n",
+                git.run("show", "HEAD:tracked.txt").stdout,
+            )
+            self.assertEqual(
+                "staged user change\nagent change\n",
+                git.run("show", "HEAD:staged.txt").stdout,
+            )
+            self.assertEqual(
+                "staged user change\n",
+                untouched.read_text(encoding="utf-8"),
+            )
+            self.assertEqual("M  untouched.txt\n", git.run("status", "--short").stdout)
+            self.assertEqual("feat: overlap", git.run("log", "-1", "--format=%s").stdout.strip())
+            self.assertIn(
+                "event=adopted_preexisting_changes count=2 "
+                "paths='staged.txt, tracked.txt'",
+                "\n".join(diagnostics),
+            )
+
+    def test_task_worktree_adopts_touched_untracked_file(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            repo = tmp_path / "repo"
+            repo.mkdir()
+            git = GitService(repo)
+            git.run("init")
+            git.run("config", "user.email", "test@example.com")
+            git.run("config", "user.name", "GigaFlex Test")
+            (repo / "tracked.txt").write_text("tracked\n", encoding="utf-8")
+            git.run("add", ".")
+            git.run("commit", "-m", "initial")
+            new_file = repo / "new.txt"
+            new_file.write_text("user content\n", encoding="utf-8")
+            manager = TaskWorktreeManager(git, temp_parent=tmp_path)
+
+            with manager.create("task 1") as workspace:
+                task_git = GitService(workspace.path)
+                (workspace.path / "result.txt").write_text("ready\n", encoding="utf-8")
+                task_git.run("add", "result.txt")
+                task_git.run("commit", "-m", "feat: prepare task")
+                (workspace.path / "new.txt").write_text(
+                    "user content\nagent content\n",
+                    encoding="utf-8",
+                )
+                task_git.run("add", "new.txt")
+                task_git.run("commit", "-m", "feat: complete new file")
+                workspace.promote(task_git.head_commit())
+
+            self.assertEqual(
+                "user content\nagent content\n",
+                new_file.read_text(encoding="utf-8"),
+            )
+            self.assertEqual(
+                "user content\nagent content\n",
+                git.run("show", "HEAD:new.txt").stdout,
+            )
+            self.assertEqual(
+                ["feat: prepare task", "feat: complete new file"],
+                git.run(
+                    "log",
+                    "--reverse",
+                    "--format=%s",
+                    "HEAD~2..HEAD",
+                ).stdout.splitlines(),
+            )
+            self.assertEqual("", git.run("status", "--short").stdout)
+
+    def test_task_worktree_adopts_task_deletion_of_dirty_file(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            repo = tmp_path / "repo"
+            repo.mkdir()
+            git = GitService(repo)
+            git.run("init")
+            git.run("config", "user.email", "test@example.com")
+            git.run("config", "user.name", "GigaFlex Test")
+            removed = repo / "removed.txt"
+            removed.write_text("original\n", encoding="utf-8")
+            git.run("add", ".")
+            git.run("commit", "-m", "initial")
+            removed.write_text("user change\n", encoding="utf-8")
+            manager = TaskWorktreeManager(git, temp_parent=tmp_path)
+
+            with manager.create("task 1") as workspace:
+                task_git = GitService(workspace.path)
+                task_git.run("rm", "removed.txt")
+                task_git.run("commit", "-m", "feat: remove obsolete file")
+                workspace.promote(task_git.head_commit())
+
+            self.assertFalse(removed.exists())
+            self.assertNotEqual(
+                0,
+                git.run("cat-file", "-e", "HEAD:removed.txt", check=False).returncode,
+            )
+            self.assertEqual("", git.run("status", "--short").stdout)
+
+    def test_task_worktree_rejects_concurrent_main_change(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            repo = tmp_path / "repo"
+            repo.mkdir()
+            git = GitService(repo)
+            git.run("init")
+            git.run("config", "user.email", "test@example.com")
+            git.run("config", "user.name", "GigaFlex Test")
+            tracked = repo / "tracked.txt"
+            tracked.write_text("original\n", encoding="utf-8")
+            git.run("add", ".")
+            git.run("commit", "-m", "initial")
+            tracked.write_text("user change\n", encoding="utf-8")
+            head_before = git.head_commit()
+            manager = TaskWorktreeManager(git, temp_parent=tmp_path)
+
+            with manager.create("task 1") as workspace:
+                task_git = GitService(workspace.path)
+                (workspace.path / "tracked.txt").write_text(
+                    "user change\nagent change\n",
+                    encoding="utf-8",
+                )
+                task_git.run("add", "tracked.txt")
+                task_git.run("commit", "-m", "feat: overlap")
+                tracked.write_text("concurrent user change\n", encoding="utf-8")
+                with self.assertRaisesRegex(GitError, "main working tree changed"):
+                    workspace.promote(task_git.head_commit())
+
+            self.assertEqual(head_before, git.head_commit())
+            self.assertEqual(
+                "concurrent user change\n",
+                tracked.read_text(encoding="utf-8"),
+            )
+
+    def test_task_worktree_rolls_back_head_and_dirty_state_when_install_fails(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             repo = tmp_path / "repo"
@@ -216,12 +396,24 @@ class GitServiceTest(unittest.TestCase):
             with manager.create("task 1") as workspace:
                 task_git = GitService(workspace.path)
                 (workspace.path / "tracked.txt").write_text(
-                    "agent change\n",
+                    "user change\nagent change\n",
                     encoding="utf-8",
                 )
                 task_git.run("add", "tracked.txt")
                 task_git.run("commit", "-m", "feat: overlap")
-                with self.assertRaisesRegex(GitError, "pre-existing user modifications"):
+
+                replace_paths = git.replace_paths_from_ref
+                calls = 0
+
+                def fail_first_install(ref, paths):
+                    nonlocal calls
+                    calls += 1
+                    if calls == 1:
+                        raise GitError("injected install failure")
+                    replace_paths(ref, paths)
+
+                git.replace_paths_from_ref = fail_first_install  # type: ignore[method-assign]
+                with self.assertRaisesRegex(GitError, "injected install failure"):
                     workspace.promote(task_git.head_commit())
 
             self.assertEqual(head_before, git.head_commit())

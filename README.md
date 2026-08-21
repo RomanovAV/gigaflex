@@ -18,8 +18,9 @@ This is a small standalone rewrite of the useful ralphex core:
 - execute Superpowers `docs/superpowers/plans/*.md` implementation plans directly
 - run one task section per agent iteration
 - run each task iteration in a disposable snapshot worktree and promote only
-  its validated linear commits; pre-existing dirty files stay outside task
-  commits, and overlapping task/user changes stop before promotion
+  its validated linear commits; dirty paths touched by the task are adopted
+  wholesale into its first commit, while untouched dirty paths retain their
+  staged, unstaged, or untracked state
 - keep detailed agent output in progress logs, provide agents only a bounded
   current-run snapshot, and generate a live local dashboard
 - persist successful phase checkpoints and resume interrupted runs without
@@ -535,10 +536,16 @@ Git behavior:
 - `--base-ref REF` resolves the ref to a commit, validates that it is an ancestor
   of the execution `HEAD`, and uses that immutable commit for plan or review runs
 - dirty working trees are rejected unless `--allow-dirty` is passed
-- `--allow-dirty` applies throughout the run: newly uncommitted paths left by a
-  completed task or finalize pass are logged and carried into the next phase
-  instead of stopping execution; task checklist completion and a task commit
-  are still required
+- `--allow-dirty` snapshots the initial working tree for each isolated task;
+  pre-existing dirty paths that the task touches are adopted wholesale into
+  the first promoted task commit, because their user and task hunks cannot
+  always be separated safely
+- pre-existing dirty paths left untouched by a task retain their staged,
+  unstaged, or untracked state; promotion stops if the main working tree changes
+  concurrently after the task snapshot is created
+- newly uncommitted paths left by a completed task or finalize pass are logged
+  and carried into the next phase instead of stopping execution; task checklist
+  completion and a task commit are still required
 - with `--allow-dirty`, review prompts include committed, staged, unstaged, and
   untracked changes via `git status --short`, `git diff --cached`, and `git diff`
 - completed full runs move the plan file to `completed/`

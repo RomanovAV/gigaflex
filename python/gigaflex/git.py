@@ -455,6 +455,55 @@ class GitService:
     def tree_id(self, ref: str) -> str:
         return self.run("rev-parse", f"{ref}^{{tree}}").stdout.strip()
 
+    def index_path(self) -> Path:
+        raw = self.run("rev-parse", "--git-path", "index").stdout.strip()
+        path = Path(raw)
+        return path.resolve() if path.is_absolute() else (self.cwd / path).resolve()
+
+    def replace_paths_from_ref(self, ref: str, paths: Iterable[Path]) -> None:
+        """Replace selected index/worktree paths with their exact state at ref."""
+        normalized = sorted({_normalize_relative(path) for path in paths})
+        if not normalized:
+            return
+
+        present: list[str] = []
+        absent: list[str] = []
+        for path in normalized:
+            result = self.run(
+                "ls-tree",
+                "-z",
+                "--name-only",
+                ref,
+                "--",
+                path,
+            ).stdout.split("\0")
+            if path in result:
+                present.append(path)
+            else:
+                absent.append(path)
+
+        if present:
+            self.run("checkout", ref, "--", *present)
+        if absent:
+            self.run(
+                "rm",
+                "-q",
+                "-f",
+                "--cached",
+                "--ignore-unmatch",
+                "--",
+                *absent,
+            )
+            root = self.repo_root()
+            for relative in absent:
+                target = root / relative
+                if target.is_dir() and not target.is_symlink():
+                    raise GitError(
+                        "cannot replace task path because it is a directory: "
+                        f"{relative}"
+                    )
+                target.unlink(missing_ok=True)
+
     def linear_commits_between(self, ancestor: str, descendant: str) -> list[str]:
         if not self.is_ancestor(ancestor, descendant):
             raise GitError(
@@ -496,8 +545,28 @@ class GitService:
             self.run("cherry-pick", "--abort", check=False)
             raise
 
-    def fast_forward(self, commit: str) -> None:
-        self.run("merge", "--ff-only", commit)
+    def rewrite_commit_tree(
+        self,
+        source_commit: str,
+        tree: str,
+        parent: str,
+    ) -> str:
+        source = _parse_commit(self.run("cat-file", "commit", source_commit).stdout)
+        result = self.run(
+            "commit-tree",
+            tree,
+            "-p",
+            parent,
+            input_text=source.message,
+            env=_commit_identity_env(source),
+        )
+        rewritten = result.stdout.strip()
+        if not rewritten:
+            raise GitError("git commit-tree did not return a rewritten task commit")
+        return rewritten
+
+    def update_head(self, new_commit: str, old_commit: str, reason: str) -> None:
+        self.run("update-ref", "-m", reason, "HEAD", new_commit, old_commit)
 
 
 @dataclass(frozen=True)
@@ -641,34 +710,146 @@ class TaskWorktreeManager:
     def promote(self, workspace: TaskWorktree, task_head: str) -> list[str]:
         task_git = GitService(workspace.path)
         commits = task_git.linear_commits_between(workspace.snapshot_commit, task_head)
-        changed_paths = task_git.changed_paths_between(workspace.snapshot_commit, task_head)
-        overlap = sorted(changed_paths & set(workspace.original_dirty_paths))
-        if overlap:
-            shown = ", ".join(str(path) for path in overlap[:10])
-            if len(overlap) > 10:
-                shown += f", ... ({len(overlap)} total)"
-            raise GitError(
-                "isolated task changed paths with pre-existing user modifications "
-                f"({shown}); task commits were not promoted"
-            )
+        touched_paths: set[Path] = set()
+        parent = workspace.snapshot_commit
+        for commit in commits:
+            touched_paths.update(task_git.changed_paths_between(parent, commit))
+            parent = commit
+        adopted_paths = sorted(touched_paths & set(workspace.original_dirty_paths))
 
         self._assert_main_unchanged(workspace, "promotion-before.index")
         promotion_path = workspace.path.parent / "promotion"
         try:
             self.git.add_detached_worktree(promotion_path, workspace.base_commit)
             promotion_git = GitService(promotion_path)
-            promotion_git.cherry_pick_transaction(commits)
+            if adopted_paths:
+                self._promote_with_adopted_paths(
+                    promotion_git,
+                    workspace,
+                    commits,
+                    adopted_paths,
+                )
+            else:
+                promotion_git.cherry_pick_transaction(commits)
             promoted_head = promotion_git.head_commit()
             self._assert_main_unchanged(workspace, "promotion-after.index")
-            self.git.fast_forward(promoted_head)
+            self._install_promoted_head(
+                workspace,
+                promoted_head,
+                touched_paths,
+            )
         finally:
             self.git.remove_worktree(promotion_path)
             self.git.prune_worktrees()
+        if adopted_paths:
+            shown = ", ".join(str(path) for path in adopted_paths[:10])
+            if len(adopted_paths) > 10:
+                shown += f", ... ({len(adopted_paths)} total)"
+            self.report(
+                "session=task-worktree event=adopted_preexisting_changes "
+                f"count={len(adopted_paths)} paths={shown!r}"
+            )
         self.report(
             "session=task-worktree event=promoted "
             f"commits={len(commits)} head={self.git.head_commit()}"
         )
         return commits
+
+    def _promote_with_adopted_paths(
+        self,
+        promotion_git: GitService,
+        workspace: TaskWorktree,
+        commits: list[str],
+        adopted_paths: list[Path],
+    ) -> None:
+        promotion_git.replace_paths_from_ref(
+            workspace.snapshot_commit,
+            adopted_paths,
+        )
+        bootstrap_tree = promotion_git.run("write-tree").stdout.strip()
+        bootstrap = promotion_git.run(
+            "commit-tree",
+            bootstrap_tree,
+            "-p",
+            workspace.base_commit,
+            input_text="gigaflex: ephemeral adopted task inputs\n",
+            env={
+                "GIT_AUTHOR_NAME": "GigaFlex",
+                "GIT_AUTHOR_EMAIL": "gigaflex@localhost",
+                "GIT_COMMITTER_NAME": "GigaFlex",
+                "GIT_COMMITTER_EMAIL": "gigaflex@localhost",
+            },
+        ).stdout.strip()
+        if not bootstrap:
+            raise GitError("git commit-tree did not return an adopted-input commit")
+        promotion_git.run("reset", "--hard", bootstrap)
+
+        first, *remaining = commits
+        promotion_git.cherry_pick_transaction([first])
+        rewritten_first = promotion_git.rewrite_commit_tree(
+            first,
+            promotion_git.tree_id("HEAD"),
+            workspace.base_commit,
+        )
+        promotion_git.run("reset", "--hard", rewritten_first)
+        if remaining:
+            promotion_git.cherry_pick_transaction(remaining)
+
+    def _install_promoted_head(
+        self,
+        workspace: TaskWorktree,
+        promoted_head: str,
+        touched_paths: set[Path],
+    ) -> None:
+        index_path = self.git.index_path()
+        index_backup = workspace.path.parent / "main.index.backup"
+        had_index = index_path.exists()
+        if had_index:
+            shutil.copy2(index_path, index_backup)
+
+        head_updated = False
+        try:
+            self.git.update_head(
+                promoted_head,
+                workspace.base_commit,
+                "gigaflex: promote isolated task",
+            )
+            head_updated = True
+            self.git.replace_paths_from_ref(promoted_head, touched_paths)
+        except BaseException as install_error:
+            rollback_errors: list[str] = []
+            if head_updated:
+                try:
+                    self.git.update_head(
+                        workspace.base_commit,
+                        promoted_head,
+                        "gigaflex: roll back failed task promotion",
+                    )
+                except (OSError, GitError) as exc:
+                    rollback_errors.append(f"HEAD: {exc}")
+            try:
+                self.git.replace_paths_from_ref(
+                    workspace.snapshot_commit,
+                    touched_paths,
+                )
+            except (OSError, GitError) as exc:
+                rollback_errors.append(f"working tree: {exc}")
+            finally:
+                try:
+                    if had_index:
+                        shutil.copy2(index_backup, index_path)
+                    else:
+                        index_path.unlink(missing_ok=True)
+                except OSError as exc:
+                    rollback_errors.append(f"index: {exc}")
+            if rollback_errors:
+                raise GitError(
+                    f"task promotion failed ({install_error}); rollback also failed: "
+                    + "; ".join(rollback_errors)
+                ) from install_error
+            raise
+        finally:
+            index_backup.unlink(missing_ok=True)
 
     def _assert_main_unchanged(
         self,
