@@ -220,12 +220,15 @@ synthesis session validates each finding and returns exactly one `fixed`,
 `rejected`, `confirmed`, or `blocked` decision per identifier. Synthesis uses
 the task model and is the only review stage allowed to fix files, run tests, and
 commit corrections. Fixed or confirmed findings trigger another specialist
-pass. Follow-up passes always include `quality` and `implementation`, plus each
-specialist that reported a finding in an earlier pass of the current review
-run. Accepted `fixed` and `rejected` decisions are retained in compact in-run
-memory and supplied to later review and synthesis passes; current repository
-evidence remains authoritative. A reported blocker is audited once before it
-can stop the run. Review allows 10 iterations by default.
+verification. Follow-up verification always includes `quality` and
+`implementation`, plus specialists represented in the latest fixed/confirmed
+ledger. It inspects only the immediately preceding synthesis delta and ledger
+files instead of restarting the full base-diff audit. Accepted `fixed` and
+`rejected` decisions are retained in compact in-run memory and supplied to later
+review and synthesis passes; current repository evidence remains authoritative.
+A reported blocker is audited once before it can stop the run. Review allows 10
+repair cycles by default and always adds one terminal read-only verification
+after the final allowed repair.
 
 Finalize runs after successful review by default. Disable it with
 `--no-finalize` or `finalize_enabled = false`. Use `--no-parallel-review` for a

@@ -171,7 +171,7 @@ class RunnerTest(unittest.TestCase):
             self.assertIn("[WARN] quality", progress)
             self.assertIn("event=no_findings action=skip_synthesis", progress)
 
-    def test_followup_review_keeps_core_agents_and_agents_with_earlier_findings(self) -> None:
+    def test_followup_review_uses_core_agents_and_latest_ledger_agents(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
 
@@ -186,7 +186,14 @@ class RunnerTest(unittest.TestCase):
                     return {
                         name: ExecResult(
                             output=(
-                                VALID_REVIEW_FINDING
+                                (
+                                    VALID_REVIEW_FINDING.replace(
+                                        "docs/report.md",
+                                        "src/result.py",
+                                    )
+                                    if round_number == 1
+                                    else VALID_REVIEW_FINDING
+                                )
                                 if name == finding_agent
                                 else "NO FINDINGS\n"
                             ),
@@ -226,13 +233,30 @@ class RunnerTest(unittest.TestCase):
 
             self.assertEqual(3, len(review_executor.batch_prompts))
             self.assertEqual(set(REVIEW_AGENTS), set(review_executor.batch_prompts[0]))
-            expected_followup = {"quality", "implementation", "documentation"}
-            self.assertEqual(expected_followup, set(review_executor.batch_prompts[1]))
-            self.assertEqual(expected_followup, set(review_executor.batch_prompts[2]))
+            first_followup = {"quality", "implementation", "documentation"}
+            self.assertEqual(first_followup, set(review_executor.batch_prompts[1]))
+            self.assertEqual(
+                {"quality", "implementation"},
+                set(review_executor.batch_prompts[2]),
+            )
             second_prompt = review_executor.batch_prompts[1]["quality"]
             self.assertIn("Runner-maintained prior review decision memory", second_prompt)
             self.assertIn("decision: fixed", second_prompt)
             self.assertIn("file: docs/report.md", second_prompt)
+            self.assertIn("Authoritative follow-up repair verification scope", second_prompt)
+            self.assertIn(
+                "<FOLLOWUP_REVIEW_FILE>docs/report.md</FOLLOWUP_REVIEW_FILE>",
+                second_prompt,
+            )
+            third_prompt = review_executor.batch_prompts[2]["quality"]
+            self.assertIn(
+                "<FOLLOWUP_REVIEW_FILE>src/result.py</FOLLOWUP_REVIEW_FILE>",
+                third_prompt,
+            )
+            self.assertNotIn(
+                "<FOLLOWUP_REVIEW_FILE>docs/report.md</FOLLOWUP_REVIEW_FILE>",
+                third_prompt,
+            )
             self.assertEqual(2, len(synthesis_prompts))
             self.assertNotIn(
                 "Runner-maintained prior review decision memory",
@@ -247,7 +271,168 @@ class RunnerTest(unittest.TestCase):
                 "iteration=2 agents='quality,implementation,documentation'",
                 progress,
             )
+            self.assertIn(
+                "iteration=3 agents='quality,implementation'",
+                progress,
+            )
             self.assertIn("event=decision_memory_updated", progress)
+
+    def test_last_parallel_repair_gets_scoped_terminal_verification(self) -> None:
+        with temporary_repo() as (repo, _plan):
+            class FindingThenCleanExecutor(FakeExecutor):
+                def run_batch(self, prompts):
+                    self.batch_prompts.append(prompts)
+                    output = VALID_REVIEW_FINDING if len(self.batch_prompts) == 1 else "NO FINDINGS\n"
+                    return {
+                        name: ExecResult(
+                            output=output if name == "quality" else "NO FINDINGS\n",
+                            returncode=0,
+                        )
+                        for name in prompts
+                    }
+
+            review_executor = FindingThenCleanExecutor()
+            synthesis_prompts: list[str] = []
+            repair_base = GitService(repo).head_commit()
+
+            def synthesize(prompt):
+                synthesis_prompts.append(prompt)
+                changed = repo / "src/generated.txt"
+                changed.parent.mkdir()
+                changed.write_text("repaired\n", encoding="utf-8")
+                git(repo, "add", str(changed))
+                git(repo, "commit", "-m", "fix: repair review finding")
+                return ExecResult(
+                    output=synthesis_decision("F001", "fixed"),
+                    returncode=0,
+                )
+
+            runner = Runner(
+                RunOptions(
+                    plan_file=None,
+                    progress_file=repo / "progress.txt",
+                    review_only=True,
+                    parallel_review=True,
+                    finalize_enabled=False,
+                    review_iterations=1,
+                    delay_seconds=0,
+                ),
+                review_executor,  # type: ignore[arg-type]
+                ProgressLog(repo / "progress.txt"),
+                synthesis_executor=CallbackExecutor(synthesize),  # type: ignore[arg-type]
+                review_agent_executor=review_executor,  # type: ignore[arg-type]
+            )
+
+            runner.run_review()
+
+            self.assertEqual(2, len(review_executor.batch_prompts))
+            self.assertEqual(1, len(synthesis_prompts))
+            terminal_prompt = review_executor.batch_prompts[1]["quality"]
+            self.assertIn(f"git diff {repair_base}...HEAD", terminal_prompt)
+            self.assertIn("terminal_verification: true", terminal_prompt)
+            self.assertIn(
+                "<FOLLOWUP_REVIEW_FILE>docs/report.md</FOLLOWUP_REVIEW_FILE>",
+                terminal_prompt,
+            )
+            self.assertIn(
+                "<FOLLOWUP_REVIEW_FILE>src/generated.txt</FOLLOWUP_REVIEW_FILE>",
+                terminal_prompt,
+            )
+            progress = (repo / "progress.txt").read_text(encoding="utf-8")
+            self.assertIn("parallel review terminal verification 2", progress)
+            self.assertIn("event=followup_scope_created repair=1", progress)
+
+    def test_terminal_verification_does_not_start_an_extra_repair(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+
+            class AlwaysFindingExecutor(FakeExecutor):
+                def run_batch(self, prompts):
+                    self.batch_prompts.append(prompts)
+                    return {
+                        name: ExecResult(
+                            output=(
+                                VALID_REVIEW_FINDING
+                                if name == "quality"
+                                else "NO FINDINGS\n"
+                            ),
+                            returncode=0,
+                        )
+                        for name in prompts
+                    }
+
+            review_executor = AlwaysFindingExecutor()
+            synthesis_prompts: list[str] = []
+            runner = Runner(
+                RunOptions(
+                    plan_file=None,
+                    progress_file=tmp_path / "progress.txt",
+                    review_only=True,
+                    parallel_review=True,
+                    finalize_enabled=False,
+                    review_iterations=1,
+                    delay_seconds=0,
+                ),
+                review_executor,  # type: ignore[arg-type]
+                ProgressLog(tmp_path / "progress.txt"),
+                synthesis_executor=CallbackExecutor(
+                    lambda prompt: (
+                        synthesis_prompts.append(prompt),
+                        ExecResult(output=synthesis_decision("F001", "fixed")),
+                    )[1]
+                ),  # type: ignore[arg-type]
+                review_agent_executor=review_executor,  # type: ignore[arg-type]
+            )
+
+            with self.assertRaisesRegex(
+                RuntimeError,
+                "repair budget exhausted after terminal verification",
+            ):
+                runner.run_review()
+
+            self.assertEqual(2, len(review_executor.batch_prompts))
+            self.assertEqual(1, len(synthesis_prompts))
+            progress = (tmp_path / "progress.txt").read_text(encoding="utf-8")
+            self.assertIn("event=repair_budget_exhausted", progress)
+
+    def test_single_review_also_verifies_after_last_repair(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            review_prompts: list[str] = []
+
+            def review(prompt):
+                review_prompts.append(prompt)
+                return ExecResult(
+                    output=(VALID_REVIEW_FINDING if len(review_prompts) == 1 else "NO FINDINGS\n")
+                )
+
+            synthesis_prompts: list[str] = []
+            runner = Runner(
+                RunOptions(
+                    plan_file=None,
+                    progress_file=tmp_path / "progress.txt",
+                    review_only=True,
+                    parallel_review=False,
+                    finalize_enabled=False,
+                    review_iterations=1,
+                    delay_seconds=0,
+                ),
+                CallbackExecutor(review),  # type: ignore[arg-type]
+                ProgressLog(tmp_path / "progress.txt"),
+                synthesis_executor=CallbackExecutor(
+                    lambda prompt: (
+                        synthesis_prompts.append(prompt),
+                        ExecResult(output=synthesis_decision("F001", "fixed")),
+                    )[1]
+                ),  # type: ignore[arg-type]
+                review_agent_executor=CallbackExecutor(review),  # type: ignore[arg-type]
+            )
+
+            runner.run_review()
+
+            self.assertEqual(2, len(review_prompts))
+            self.assertEqual(1, len(synthesis_prompts))
+            self.assertIn("terminal_verification: true", review_prompts[1])
 
     def test_single_clean_review_skips_synthesis(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

@@ -271,6 +271,7 @@ DEFAULT_CONFIG_TEXT = """[gigaflex]
 # Legacy explicit review base; leave empty to capture the launch branch and commit.
 # default_branch =
 # max_iterations = 50
+# Maximum synthesis/repair cycles; one terminal verification runs afterward.
 # review_iterations = 10
 # finalize_enabled = true
 # session_timeout = 1800

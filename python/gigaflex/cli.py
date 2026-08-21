@@ -107,7 +107,14 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--tasks-only", action="store_true", help="run task phase only")
     parser.add_argument("--review", action="store_true", help="skip tasks and run review phase")
     parser.add_argument("--max-iterations", type=int, help="maximum task iterations")
-    parser.add_argument("--review-iterations", type=int, help="maximum review iterations")
+    parser.add_argument(
+        "--review-iterations",
+        type=int,
+        help=(
+            "maximum review repair cycles; one terminal verification pass runs "
+            "after the last repair"
+        ),
+    )
     parser.add_argument("--session-timeout", type=int, help="seconds before killing one gigacode session")
     parser.add_argument("--idle-timeout", type=int, help="seconds of no output before killing one gigacode session")
     parser.add_argument(

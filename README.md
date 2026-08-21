@@ -28,8 +28,8 @@ This is a small standalone rewrite of the useful ralphex core:
 - run review and a default finalize pass
 - run five specialist review agents in parallel in disposable detached
   worktrees, then synthesize/fix findings in the main worktree; follow-up
-  passes always run quality and implementation plus every specialist that
-  found an issue earlier in the review run
+  verification runs quality and implementation plus specialists represented
+  in the latest repair ledger
 - compare the accumulated change against the immutable commit captured at the
   start of the run instead of auditing the whole repository from scratch
 - create/switch a git branch from the plan filename
@@ -116,8 +116,8 @@ captured at launch through the current result. They start from the full
 `base...HEAD` diff, read changed files in context, and may inspect directly
 related code or tests, but they do not perform an unrelated repository-wide
 audit. Confirmed findings go through the scoped synthesis stage. Follow-up
-passes always run `quality` and `implementation`, plus every specialist that
-reported a finding earlier in the review run, before the default finalize pass.
+verification runs `quality` and `implementation`, plus specialists represented
+in the latest repair ledger, before the default finalize pass.
 
 GigaFlex invokes the configured GigaCode CLI in the target workspace for every
 phase. Existing team skills, project rules, allowed tools, and GigaCode settings
@@ -374,9 +374,8 @@ Review behavior:
 
 - default: parallel review with `quality`, `implementation`, `testing`,
   `simplification`, and `documentation` agents on the first pass
-- follow-up passes always run `quality` and `implementation`, plus every
-  specialist that reported a finding in any earlier pass of the current review
-  run
+- follow-up verification always runs `quality` and `implementation`, plus each
+  specialist represented in the latest fixed/confirmed decision ledger
 - implementation review always verifies that the requested result was actually
   produced, whether the deliverable is code, data, analysis, documentation, or
   a mixture
@@ -413,6 +412,14 @@ Review behavior:
   memory and supplied to later review and synthesis passes, preventing agents
   from reopening settled claims merely to prefer a different valid convention;
   current repository evidence can still override stale memory
+- `review_iterations` and `--review-iterations N` limit synthesis/repair cycles,
+  not reviewer calls; after the final allowed repair, GigaFlex always runs one
+  terminal read-only verification pass before deciding success or reporting the
+  remaining scoped findings
+- the first review audits the full accumulated change; every follow-up replaces
+  that broad scope with the diff produced by the immediately preceding
+  synthesis plus files from its fixed/confirmed ledger, so it verifies repairs
+  without opening unrelated pre-existing findings
 - explanatory synthesis text is removed when the complete expected decision
   ledger can be recovered deterministically; if scoped ledger reconciliation is
   still malformed, the runner stops with a review-protocol error instead of

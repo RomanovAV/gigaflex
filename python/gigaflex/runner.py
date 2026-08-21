@@ -21,6 +21,7 @@ from .progress import ProgressLog
 from .prompts import (
     DEFAULT_PROMPTS,
     REVIEW_AGENTS,
+    FollowupReviewScope,
     PromptContext,
     PromptTemplates,
     render,
@@ -107,6 +108,7 @@ class Runner:
         self.task_worktrees = task_worktrees
         self.checkpoint = checkpoint
         self._active_cwd: Optional[Path] = None
+        self._latest_review_verification_records: tuple[ReviewDecisionRecord, ...] = ()
 
     def run(self) -> None:
         if self.options.dry_run:
@@ -329,14 +331,36 @@ class Runner:
             return
 
         context = self._context()
-        for iteration in range(1, self.options.review_iterations + 1):
+        repair_budget = max(0, self.options.review_iterations)
+        max_attempts = repair_budget + 1
+        repair_count = 0
+        iteration = 0
+        followup_scope: Optional[FollowupReviewScope] = None
+        while True:
+            iteration += 1
+            terminal_verification = repair_count >= repair_budget
+            active_scope = self._verification_scope(
+                followup_scope,
+                terminal_verification=terminal_verification,
+            )
             if self.dashboard is not None:
                 self.dashboard.review_attempt_started(
                     iteration,
-                    self.options.review_iterations,
+                    max_attempts,
                     parallel=False,
                 )
-            self.log.section(f"review iteration {iteration}")
+            section = (
+                f"review terminal verification {iteration}"
+                if terminal_verification
+                else f"review iteration {iteration}"
+            )
+            self.log.section(section)
+            self._log_review_attempt_scope(
+                iteration,
+                repair_count,
+                active_scope,
+                terminal_verification=terminal_verification,
+            )
             head_before = self._git().head_commit()
             result = self._run_single_review_agent(
                 "review",
@@ -344,6 +368,7 @@ class Runner:
                     self.options.prompts.review,
                     review_context,
                     decision_memory=self._review_decision_memory_snapshot(),
+                    followup_scope=active_scope,
                 ),
             )
             self._prefix_new_commits(head_before, "review")
@@ -369,10 +394,18 @@ class Runner:
                     )
                 return
 
+            if terminal_verification:
+                self._raise_review_repair_budget_exhausted(
+                    iteration,
+                    repair_count,
+                    len(identified),
+                )
+
             self.log.section("review synthesis")
             if self.dashboard is not None:
                 self.dashboard.review_synthesis_started(iteration, len(identified))
             head_before = self._git().head_commit()
+            dirty_before = self._safe_uncommitted_paths()
             synthesis = self.synthesis_executor.run(
                 self._render_review_synthesis_prompt({"review": structured_output}, context)
             )
@@ -390,34 +423,68 @@ class Runner:
                         message=f"Review passed on attempt {iteration}",
                     )
                 return
+            repair_count += 1
+            followup_scope = self._build_followup_review_scope(
+                repair_count,
+                head_before,
+                dirty_before,
+            )
             if self.dashboard is not None:
                 self.dashboard.review_attempt_finished(
                     iteration,
                     "needs_another_pass",
                     findings=len(identified),
-                    message=f"Review attempt {iteration} requires another pass",
+                    message=(
+                        f"Review attempt {iteration} repaired findings; "
+                        "running focused verification"
+                    ),
                 )
             time.sleep(self.options.delay_seconds)
-        raise RuntimeError(f"max review iterations reached: {self.options.review_iterations}")
 
     def run_parallel_review(self) -> None:
         context = self._context()
         selected_agents = tuple(REVIEW_AGENTS)
-        agents_with_findings: set[str] = set()
-        for iteration in range(1, self.options.review_iterations + 1):
+        repair_budget = max(0, self.options.review_iterations)
+        max_attempts = repair_budget + 1
+        repair_count = 0
+        iteration = 0
+        followup_scope: Optional[FollowupReviewScope] = None
+        while True:
+            iteration += 1
+            terminal_verification = repair_count >= repair_budget
+            active_scope = self._verification_scope(
+                followup_scope,
+                terminal_verification=terminal_verification,
+            )
             if self.dashboard is not None:
                 self.dashboard.review_attempt_started(
                     iteration,
-                    self.options.review_iterations,
+                    max_attempts,
                     parallel=True,
                 )
-            self.log.section(f"parallel review iteration {iteration}")
+            section = (
+                f"parallel review terminal verification {iteration}"
+                if terminal_verification
+                else f"parallel review iteration {iteration}"
+            )
+            self.log.section(section)
             self.log.diagnostic(
                 "session=review event=agents_selected "
-                f"iteration={iteration} agents={','.join(selected_agents)!r}"
+                f"iteration={iteration} agents={','.join(selected_agents)!r} "
+                f"repair_count={repair_count} "
+                f"terminal_verification={terminal_verification}"
+            )
+            self._log_review_attempt_scope(
+                iteration,
+                repair_count,
+                active_scope,
+                terminal_verification=terminal_verification,
             )
             head_before = self._git().head_commit()
-            results = self._run_parallel_review_agents(selected_agents)
+            results = self._run_parallel_review_agents(
+                selected_agents,
+                followup_scope=active_scope,
+            )
             self._prefix_new_commits(head_before, "parallel review")
             findings: dict[str, str] = {}
             for name in selected_agents:
@@ -431,7 +498,6 @@ class Runner:
                 findings[name] = self._structured_review_output(name, result)
 
             identified = identify_review_findings(findings)
-            agents_with_findings.update(item.agent for item in identified)
             if not identified:
                 self.log.diagnostic(
                     "session=review event=no_findings action=skip_synthesis"
@@ -445,10 +511,18 @@ class Runner:
                     )
                 return
 
+            if terminal_verification:
+                self._raise_review_repair_budget_exhausted(
+                    iteration,
+                    repair_count,
+                    len(identified),
+                )
+
             self.log.section("review synthesis")
             if self.dashboard is not None:
                 self.dashboard.review_synthesis_started(iteration, len(identified))
             head_before = self._git().head_commit()
+            dirty_before = self._safe_uncommitted_paths()
             synthesis = self.synthesis_executor.run(
                 self._render_review_synthesis_prompt(findings, context)
             )
@@ -466,20 +540,136 @@ class Runner:
                         message=f"Review passed on attempt {iteration}",
                     )
                 return
+            repair_count += 1
+            followup_scope = self._build_followup_review_scope(
+                repair_count,
+                head_before,
+                dirty_before,
+            )
             if self.dashboard is not None:
                 self.dashboard.review_attempt_finished(
                     iteration,
                     "needs_another_pass",
                     findings=len(identified),
-                    message=f"Review attempt {iteration} requires another pass",
+                    message=(
+                        f"Review attempt {iteration} repaired findings; "
+                        "running focused verification"
+                    ),
                 )
-            selected_agents = tuple(
-                name
-                for name in REVIEW_AGENTS
-                if name in CORE_REVIEW_AGENTS or name in agents_with_findings
-            )
+            selected_agents = self._followup_review_agents()
             time.sleep(self.options.delay_seconds)
-        raise RuntimeError(f"max review iterations reached: {self.options.review_iterations}")
+
+    @staticmethod
+    def _verification_scope(
+        scope: Optional[FollowupReviewScope],
+        *,
+        terminal_verification: bool,
+    ) -> Optional[FollowupReviewScope]:
+        if scope is None:
+            return None
+        return replace(scope, terminal_verification=terminal_verification)
+
+    def _log_review_attempt_scope(
+        self,
+        iteration: int,
+        repair_count: int,
+        scope: Optional[FollowupReviewScope],
+        *,
+        terminal_verification: bool,
+    ) -> None:
+        mode = "initial" if scope is None else "followup"
+        self.log.diagnostic(
+            "session=review event=attempt_scope "
+            f"iteration={iteration} mode={mode} repair_count={repair_count} "
+            f"terminal_verification={terminal_verification} "
+            f"files={len(scope.files) if scope is not None else 'full'}"
+        )
+
+    def _raise_review_repair_budget_exhausted(
+        self,
+        iteration: int,
+        repair_count: int,
+        findings: int,
+    ) -> None:
+        message = (
+            "review repair budget exhausted after terminal verification: "
+            f"{findings} findings remain after {repair_count} repair cycles"
+        )
+        self.log.diagnostic(
+            "session=review event=repair_budget_exhausted "
+            f"iteration={iteration} repairs={repair_count} findings={findings}"
+        )
+        if self.dashboard is not None:
+            self.dashboard.review_attempt_finished(
+                iteration,
+                "needs_another_pass",
+                findings=findings,
+                message=message,
+            )
+        raise RuntimeError(message)
+
+    def _safe_uncommitted_paths(self) -> set[Path]:
+        git = self._git()
+        if not git.is_repo():
+            return set()
+        return self._uncommitted_paths()
+
+    def _build_followup_review_scope(
+        self,
+        repair_number: int,
+        base_commit: str,
+        dirty_before: set[Path],
+    ) -> FollowupReviewScope:
+        records = self._latest_review_verification_records
+        files = {record.file for record in records if record.file}
+        git = self._git()
+        head_commit = git.head_commit()
+        if git.is_repo():
+            if base_commit and head_commit:
+                try:
+                    files.update(
+                        str(path)
+                        for path in git.changed_paths_between(
+                            base_commit,
+                            head_commit,
+                        )
+                    )
+                except GitError as exc:
+                    self.log.diagnostic(
+                        "session=review event=followup_diff_failed "
+                        f"base={base_commit!r} head={head_commit!r} "
+                        f"error={str(exc)!r}"
+                    )
+            dirty_after = self._safe_uncommitted_paths()
+            files.update(
+                self._display_path(path)
+                for path in dirty_after - dirty_before
+            )
+        scope = FollowupReviewScope(
+            repair_number=repair_number,
+            base_commit=base_commit,
+            head_commit=head_commit,
+            files=tuple(sorted(files)),
+            decisions=records,
+        )
+        self.log.diagnostic(
+            "session=review event=followup_scope_created "
+            f"repair={repair_number} base={base_commit or 'none'} "
+            f"head={head_commit or 'none'} files={len(scope.files)} "
+            f"decisions={len(scope.decisions)}"
+        )
+        return scope
+
+    def _followup_review_agents(self) -> tuple[str, ...]:
+        relevant = {
+            record.agent
+            for record in self._latest_review_verification_records
+        }
+        return tuple(
+            name
+            for name in REVIEW_AGENTS
+            if name in CORE_REVIEW_AGENTS or name in relevant
+        )
 
     def run_finalize(self) -> None:
         if self.dashboard is not None:
@@ -1068,6 +1258,8 @@ class Runner:
     def _run_parallel_review_agents(
         self,
         agent_names: tuple[str, ...],
+        *,
+        followup_scope: Optional[FollowupReviewScope] = None,
     ) -> dict[str, ExecResult]:
         agents = {name: REVIEW_AGENTS[name] for name in agent_names}
         if self.review_worktrees is None:
@@ -1079,6 +1271,7 @@ class Runner:
                     focus,
                     context,
                     decision_memory=self._review_decision_memory_snapshot(),
+                    followup_scope=followup_scope,
                 )
                 for name, focus in agents.items()
             }
@@ -1096,6 +1289,7 @@ class Runner:
                         worktrees.repo_root,
                     ),
                     decision_memory=self._review_decision_memory_snapshot(),
+                    followup_scope=followup_scope,
                 )
                 for name, focus in agents.items()
             }
@@ -1210,6 +1404,7 @@ class Runner:
         result: ExecResult,
         findings: dict[str, str],
     ) -> bool:
+        self._latest_review_verification_records = ()
         identified = identify_review_findings(findings)
         expected_ids = [item.finding_id for item in identified]
         decisions = None
@@ -1256,7 +1451,23 @@ class Runner:
                 )
                 self.log.diagnostic(
                     "session=review-synthesis event=reconciliation_failed "
-                    f"action=next_review_iteration reason={reason!r}"
+                    f"action=focused_verification reason={reason!r}"
+                )
+                self._latest_review_verification_records = tuple(
+                    build_review_decision_records(
+                        identified,
+                        [
+                            SynthesisDecision(
+                                finding_id=item.finding_id,
+                                decision="confirmed",
+                                reason=(
+                                    "Synthesis reconciliation failed; verify whether "
+                                    f"the original finding remains: {reason}"
+                                ),
+                            )
+                            for item in identified
+                        ],
+                    )
                 )
                 return False
             try:
@@ -1334,6 +1545,12 @@ class Runner:
                 f"remaining={','.join(remaining_blocked)!r}"
             )
 
+        decision_records = build_review_decision_records(identified, decisions)
+        self._latest_review_verification_records = tuple(
+            record
+            for record in decision_records
+            if record.decision in {"fixed", "confirmed"}
+        )
         self._remember_review_decisions(identified, decisions)
 
         counts = {

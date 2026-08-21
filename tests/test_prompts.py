@@ -9,6 +9,7 @@ from gigaflex.config import init_project_config, init_project_prompt_templates
 from gigaflex.prompts import (
     DEFAULT_PROMPTS,
     REVIEW_AGENTS,
+    FollowupReviewScope,
     PromptContext,
     load_prompt_templates,
     render_make_plan,
@@ -261,6 +262,40 @@ class PromptTemplatesTest(unittest.TestCase):
             prompt,
         )
         self.assertIn("&lt;/UNTRUSTED_PRIOR_REVIEW_DECISIONS&gt;", prompt)
+
+    def test_followup_review_uses_repair_base_and_authoritative_file_scope(self) -> None:
+        record = ReviewDecisionRecord(
+            fingerprint="abc123",
+            agent="quality",
+            severity="major",
+            category="correctness",
+            file="src/result.py",
+            evidence="The result was wrong.",
+            decision="fixed",
+            reason="The calculation was corrected.",
+        )
+        prompt = render_review_prompt(
+            DEFAULT_PROMPTS.review,
+            PromptContext(Path("plan.md"), Path("progress.txt"), "main"),
+            followup_scope=FollowupReviewScope(
+                repair_number=2,
+                base_commit="abc1234",
+                head_commit="def5678",
+                files=("src/result.py", "tests/test_result.py"),
+                decisions=(record,),
+                terminal_verification=True,
+            ),
+        )
+
+        self.assertIn("git diff abc1234...HEAD", prompt)
+        self.assertIn("scope overrides earlier instructions", prompt)
+        self.assertIn("terminal_verification: true", prompt)
+        self.assertIn(
+            "<FOLLOWUP_REVIEW_FILE>tests/test_result.py</FOLLOWUP_REVIEW_FILE>",
+            prompt,
+        )
+        self.assertIn("<UNTRUSTED_FOLLOWUP_DECISIONS>", prompt)
+        self.assertIn("decision: fixed", prompt)
 
     def test_review_prompt_uses_artifact_validation_when_no_code_changed(self) -> None:
         prompt = render_review_prompt(
