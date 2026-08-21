@@ -388,7 +388,11 @@ class GitService:
         self.run("commit", "-m", message)
         return True
 
-    def create_review_snapshot(self, index_path: Path) -> str:
+    def create_review_snapshot(
+        self,
+        index_path: Path,
+        excluded_paths: Iterable[Path] = (),
+    ) -> str:
         """Create an unreachable commit for the current working-tree state."""
         head = self.head_commit()
         if not head:
@@ -406,6 +410,16 @@ class GitService:
         try:
             self.run("read-tree", head, env=snapshot_env)
             self.run("add", "--all", env=snapshot_env)
+            excluded = [str(_normalize_relative(path)) for path in excluded_paths]
+            if excluded:
+                self.run(
+                    "reset",
+                    "-q",
+                    head,
+                    "--",
+                    *excluded,
+                    env=snapshot_env,
+                )
             tree = self.run("write-tree", env=snapshot_env).stdout.strip()
             snapshot = self.run(
                 "commit-tree",
@@ -437,6 +451,53 @@ class GitService:
 
     def prune_worktrees(self) -> None:
         self.run("worktree", "prune", "--expire", "now", check=False)
+
+    def tree_id(self, ref: str) -> str:
+        return self.run("rev-parse", f"{ref}^{{tree}}").stdout.strip()
+
+    def linear_commits_between(self, ancestor: str, descendant: str) -> list[str]:
+        if not self.is_ancestor(ancestor, descendant):
+            raise GitError(
+                f"task result {descendant} does not descend from snapshot {ancestor}"
+            )
+        commits = self.run(
+            "rev-list",
+            "--reverse",
+            "--topo-order",
+            f"{ancestor}..{descendant}",
+        ).stdout.splitlines()
+        for commit in commits:
+            parents = self.run("rev-list", "--parents", "-n", "1", commit).stdout.split()
+            if len(parents) != 2:
+                raise GitError(
+                    "task worktree produced a merge commit; transactional promotion "
+                    "supports linear task commits only"
+                )
+        return commits
+
+    def changed_paths_between(self, ancestor: str, descendant: str) -> set[Path]:
+        output = self.run(
+            "diff",
+            "--name-only",
+            "-z",
+            "--no-renames",
+            ancestor,
+            descendant,
+            "--",
+        ).stdout
+        return {Path(value) for value in output.split("\0") if value}
+
+    def cherry_pick_transaction(self, commits: list[str]) -> None:
+        if not commits:
+            raise GitError("task worktree produced no commits to promote")
+        try:
+            self.run("cherry-pick", *commits)
+        except GitError:
+            self.run("cherry-pick", "--abort", check=False)
+            raise
+
+    def fast_forward(self, commit: str) -> None:
+        self.run("merge", "--ff-only", commit)
 
 
 @dataclass(frozen=True)
@@ -544,6 +605,193 @@ class _ReviewWorktreeContext:
         if cleanup_errors:
             raise GitError(
                 "could not remove disposable review worktrees: "
+                + "; ".join(cleanup_errors)
+            )
+
+
+@dataclass(frozen=True)
+class TaskWorktree:
+    manager: "TaskWorktreeManager"
+    path: Path
+    repo_root: Path
+    base_commit: str
+    snapshot_commit: str
+    original_dirty_paths: frozenset[Path]
+
+    def promote(self, task_head: str) -> list[str]:
+        return self.manager.promote(self, task_head)
+
+
+@dataclass
+class TaskWorktreeManager:
+    """Run a task against a snapshot and promote only its committed delta."""
+
+    git: GitService
+    diagnostic: Callable[[str], None] = lambda _line: None
+    temp_parent: Optional[Path] = None
+    ignored_paths: tuple[Path, ...] = ()
+
+    @property
+    def repo_root(self) -> Path:
+        return self.git.repo_root()
+
+    def create(self, label: str) -> "_TaskWorktreeContext":
+        return _TaskWorktreeContext(self, label)
+
+    def promote(self, workspace: TaskWorktree, task_head: str) -> list[str]:
+        task_git = GitService(workspace.path)
+        commits = task_git.linear_commits_between(workspace.snapshot_commit, task_head)
+        changed_paths = task_git.changed_paths_between(workspace.snapshot_commit, task_head)
+        overlap = sorted(changed_paths & set(workspace.original_dirty_paths))
+        if overlap:
+            shown = ", ".join(str(path) for path in overlap[:10])
+            if len(overlap) > 10:
+                shown += f", ... ({len(overlap)} total)"
+            raise GitError(
+                "isolated task changed paths with pre-existing user modifications "
+                f"({shown}); task commits were not promoted"
+            )
+
+        self._assert_main_unchanged(workspace, "promotion-before.index")
+        promotion_path = workspace.path.parent / "promotion"
+        try:
+            self.git.add_detached_worktree(promotion_path, workspace.base_commit)
+            promotion_git = GitService(promotion_path)
+            promotion_git.cherry_pick_transaction(commits)
+            promoted_head = promotion_git.head_commit()
+            self._assert_main_unchanged(workspace, "promotion-after.index")
+            self.git.fast_forward(promoted_head)
+        finally:
+            self.git.remove_worktree(promotion_path)
+            self.git.prune_worktrees()
+        self.report(
+            "session=task-worktree event=promoted "
+            f"commits={len(commits)} head={self.git.head_commit()}"
+        )
+        return commits
+
+    def _assert_main_unchanged(
+        self,
+        workspace: TaskWorktree,
+        index_name: str,
+    ) -> None:
+        if self.git.head_commit() != workspace.base_commit:
+            raise GitError(
+                "main HEAD changed while the isolated task was running; "
+                "task commits were not promoted"
+            )
+        ignored = {_normalize_relative(path) for path in self.ignored_paths}
+        current_dirty_paths = frozenset(
+            path
+            for path in self.git.dirty_paths()
+            if _normalize_relative(path) not in ignored
+        )
+        current_snapshot = self.git.create_review_snapshot(
+            workspace.path.parent / index_name,
+            self.ignored_paths,
+        )
+        if self.git.tree_id(current_snapshot) != self.git.tree_id(workspace.snapshot_commit):
+            raise GitError(
+                "main working tree changed while the isolated task was running; "
+                "task commits were not promoted"
+            )
+        if current_dirty_paths != workspace.original_dirty_paths:
+            raise GitError(
+                "main working-tree status changed while the isolated task was running; "
+                "task commits were not promoted"
+            )
+
+    def report(self, line: str) -> None:
+        try:
+            self.diagnostic(line)
+        except Exception:
+            # Diagnostics must never prevent disposal of a temporary worktree.
+            pass
+
+
+class _TaskWorktreeContext:
+    def __init__(self, manager: TaskWorktreeManager, label: str) -> None:
+        self.manager = manager
+        self.label = label
+        self.root: Optional[Path] = None
+        self.path: Optional[Path] = None
+
+    def __enter__(self) -> TaskWorktree:
+        parent = str(self.manager.temp_parent) if self.manager.temp_parent else None
+        self.root = Path(tempfile.mkdtemp(prefix="gigaflex-task-", dir=parent))
+        try:
+            base_commit = self.manager.git.head_commit()
+            if not base_commit:
+                raise GitError("cannot create a task worktree without a HEAD commit")
+            ignored = {
+                _normalize_relative(path)
+                for path in self.manager.ignored_paths
+            }
+            original_dirty_paths = frozenset(
+                path
+                for path in self.manager.git.dirty_paths()
+                if _normalize_relative(path) not in ignored
+            )
+            snapshot = self.manager.git.create_review_snapshot(
+                self.root / "snapshot.index",
+                self.manager.ignored_paths,
+            )
+            path = self.root / worktree_dir_name(self.label)
+            self.path = path
+            self.manager.git.add_detached_worktree(path, snapshot)
+            self.manager.report(
+                "session=task-worktree event=created "
+                f"path={str(path)!r} base={base_commit} snapshot={snapshot} "
+                f"dirty_paths={len(original_dirty_paths)}"
+            )
+            return TaskWorktree(
+                manager=self.manager,
+                path=path,
+                repo_root=self.manager.repo_root,
+                base_commit=base_commit,
+                snapshot_commit=snapshot,
+                original_dirty_paths=original_dirty_paths,
+            )
+        except BaseException:
+            self._cleanup()
+            raise
+
+    def __exit__(self, exc_type, exc, traceback) -> None:
+        try:
+            self._cleanup()
+        except Exception as cleanup_error:
+            if exc is None:
+                raise
+            self.manager.report(
+                "session=task-worktree event=cleanup_failed "
+                f"error={str(cleanup_error)!r}"
+            )
+
+    def _cleanup(self) -> None:
+        root = self.root
+        if root is None:
+            return
+        cleanup_errors: list[str] = []
+        if self.path is not None:
+            try:
+                self.manager.git.remove_worktree(self.path)
+                self.manager.report(
+                    "session=task-worktree event=removed "
+                    f"path={str(self.path)!r}"
+                )
+            except (OSError, GitError) as exc:
+                cleanup_errors.append(f"{self.path}: {exc}")
+        self.manager.git.prune_worktrees()
+        try:
+            if root.exists():
+                shutil.rmtree(root)
+        except OSError as exc:
+            cleanup_errors.append(f"{root}: {exc}")
+        self.path = None
+        self.root = None
+        if cleanup_errors:
+            raise GitError(
+                "could not remove disposable task worktree: "
                 + "; ".join(cleanup_errors)
             )
 

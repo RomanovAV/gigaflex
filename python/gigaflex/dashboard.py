@@ -292,6 +292,7 @@ class ProgressDashboard:
                         "rate_limited",
                         "api_error",
                         "approval_unavailable",
+                        "dependency_crash",
                     )
                 ) or fields.get("returncode", 0) != 0
                 item["status"] = "failed" if failed else "completed"
@@ -767,6 +768,8 @@ def _human_failure(value: object) -> str:
 def _executor_failure(fields: dict[str, object]) -> str:
     if _is_truthy(fields.get("rate_limited")):
         return "Rate limit reached"
+    if _is_truthy(fields.get("dependency_crash")):
+        return "GigaCode crashed in an external dependency"
     if _is_truthy(fields.get("idle_timed_out")):
         return "Stopped after no output was received"
     if _is_truthy(fields.get("timed_out")):

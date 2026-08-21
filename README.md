@@ -17,6 +17,9 @@ This is a small standalone rewrite of the useful ralphex core:
   `Task N:` / `Iteration N:` / `Задача N:` / `Итерация N:` headings
 - execute Superpowers `docs/superpowers/plans/*.md` implementation plans directly
 - run one task section per agent iteration
+- run each task iteration in a disposable snapshot worktree and promote only
+  its validated linear commits; pre-existing dirty files stay outside task
+  commits, and overlapping task/user changes stop before promotion
 - keep detailed agent output in progress logs and generate a live local dashboard
 - detect gigaflex completion signals
 - run review and a default finalize pass
@@ -200,8 +203,9 @@ Observed GigaCode constraints:
   GigaCode attempt, measured wall time, GigaCode/API durations when reported,
   model names, per-call tokens, aggregate tokens, total run wall time, and the
   sum of call durations. The CLI prints the absolute statistics path and records
-  run status such as `success`, `failed`, or `interrupted`. Summed call time may
-  exceed wall time because review agents run in parallel.
+  run status such as `success`, `failed`, or `interrupted`, plus the failing
+  phase and reason when applicable. Summed call time may exceed wall time
+  because review agents run in parallel.
 - GigaCode runs on Node.js, so Node warnings such as
   `MaxListenersExceededWarning` may appear in combined output.
 
@@ -413,15 +417,20 @@ Review behavior:
   it up to `retry_count` times with an explicit corrective prompt; unsafe
   changes to later tasks or read-only OpenSpec context are never retried
 - before retrying a failed task process, GigaFlex restores the plan snapshot
-  from the start of that iteration so the retry selects the same task; partial
-  code changes remain available for the next attempt
+  only while the isolated task HEAD is unchanged; it never rewrites a checklist
+  behind an already-created commit
 - if a task session times out after a clean task commit, the completed
   iteration is accepted without rerunning the task agent
+- a contradictory `TASK_FAILED` marker is treated as a protocol warning when
+  repository validation proves a clean committed completion
 - only exhausted task retries stop for operator inspection; the plan is restored
   to the current task before the run exits
 - if a configured model returns `API Error: 404 Model not found`, retry the same
   prompt without `--model` and use GigaCode's default model for later calls
 - classify transient failures with `retry_patterns`
+- classify `exit 139`/`SIGSEGV` and libsecret crash signatures as external
+  dependency crashes; failed parallel reviewers receive one additional
+  sequential retry without rerunning successful reviewers
 - classify rate limits with `rate_limit_patterns`; pass
   `--wait-on-rate-limit SECONDS` to wait longer before retrying those failures
 

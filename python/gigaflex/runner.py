@@ -1,13 +1,20 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from contextlib import contextmanager
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 import time
-from typing import Callable, Optional
+from typing import Callable, Iterator, Optional
 
 from .dashboard import ProgressDashboard
 from .executor import ExecResult, GigaCodeExecutor
-from .git import GitError, GitService, ReviewWorktreeManager
+from .git import (
+    GitError,
+    GitService,
+    ReviewWorktreeManager,
+    TaskWorktree,
+    TaskWorktreeManager,
+)
 from .plan import Plan, Task, file_has_uncompleted_checkbox, parse_plan, parse_plan_file
 from .progress import ProgressLog
 from .prompts import (
@@ -84,6 +91,7 @@ class Runner:
         finalize_executor: Optional[GigaCodeExecutor] = None,
         dashboard: Optional[ProgressDashboard] = None,
         review_worktrees: Optional[ReviewWorktreeManager] = None,
+        task_worktrees: Optional[TaskWorktreeManager] = None,
     ) -> None:
         self.options = options
         self.executor = executor
@@ -94,6 +102,8 @@ class Runner:
         self.log = log
         self.dashboard = dashboard
         self.review_worktrees = review_worktrees
+        self.task_worktrees = task_worktrees
+        self._active_cwd: Optional[Path] = None
 
     def run(self) -> None:
         if self.options.dry_run:
@@ -115,7 +125,6 @@ class Runner:
         if self.options.plan_file is None:
             raise ValueError("plan file is required for task execution")
         self._validate_plan_has_tasks()
-        context = self._context()
         if not self._has_uncompleted_work():
             self.log.section("tasks")
             self.log.write("plan already has no uncompleted task sections\n")
@@ -125,18 +134,6 @@ class Runner:
             selected_task = self._parse_plan_file().first_uncompleted_task()
             if selected_task is None:
                 return
-            plan_before = self.options.plan_file.read_text(encoding="utf-8")
-            context_before = self._plan_context_snapshot()
-            head_before = self._git().head_commit()
-            dirty_before = self._uncommitted_paths()
-            prompt = render_task_prompt(
-                self.options.prompts.task,
-                context,
-                selected_task.number,
-                selected_task.title,
-                selected_task.section,
-                selected_task.has_implicit_tracking,
-            )
             task_label = self._task_label(selected_task)
             if self.dashboard is not None:
                 self.dashboard.task_started(
@@ -145,21 +142,107 @@ class Runner:
                     iteration,
                 )
             self.log.section(f"task iteration {iteration}: {task_label}")
-            result = self.executor.run(
+            if self.task_worktrees is None:
+                result = self._execute_task_iteration(selected_task)
+            else:
+                with self.task_worktrees.create(task_label) as workspace:
+                    with self._use_task_workspace(workspace):
+                        result = self._execute_task_iteration(selected_task)
+                        task_head = self._git().head_commit()
+                    workspace.promote(task_head)
+            if self.dashboard is not None:
+                self.dashboard.task_finished()
+            if result.signal == ALL_TASKS_DONE and not self._has_uncompleted_work():
+                return
+            if not self._has_uncompleted_work():
+                return
+            time.sleep(self.options.delay_seconds)
+        raise RuntimeError(f"max task iterations reached: {self.options.max_iterations}")
+
+    def _execute_task_iteration(self, selected_task: Task) -> ExecResult:
+        assert self.options.plan_file is not None
+        context = self._context()
+        plan_before = self.options.plan_file.read_text(encoding="utf-8")
+        context_before = self._plan_context_snapshot()
+        head_before = self._git().head_commit()
+        dirty_before = self._uncommitted_paths()
+        prompt = render_task_prompt(
+            self.options.prompts.task,
+            context,
+            selected_task.number,
+            selected_task.title,
+            selected_task.section,
+            selected_task.has_implicit_tracking,
+        )
+        task_label = self._task_label(selected_task)
+        result = self._run_task_agent(
+            prompt,
+            retry_guard=(
+                lambda _result: self._prepare_task_retry(
+                    selected_task,
+                    plan_before,
+                    context_before,
+                    head_before,
+                    dirty_before,
+                )
+            ),
+        )
+        self._prefix_new_commits(head_before, f"task {task_label}")
+        self._accept_task_result_or_raise(
+            result,
+            selected_task,
+            plan_before,
+            context_before,
+            head_before,
+            dirty_before,
+        )
+        completion_retries = 0
+        while (
+            completion_retries < max(0, self.options.task_completion_retries)
+            and self._can_retry_incomplete_task(
+                selected_task,
+                plan_before,
+                context_before,
+            )
+        ):
+            completion_retries += 1
+            current_task = self._matching_task(self._parse_plan_file(), selected_task)
+            assert current_task is not None
+            self.log.section(
+                f"task completion retry {completion_retries}: {task_label}"
+            )
+            self.log.diagnostic(
+                "session=task event=completion_retry_scheduled "
+                f"task={task_label!r} attempt={completion_retries} "
+                f"attempts={max(0, self.options.task_completion_retries)}"
+            )
+            retry_plan_before = self.options.plan_file.read_text(encoding="utf-8")
+            retry_context_before = self._plan_context_snapshot()
+            retry_head_before = self._git().head_commit()
+            retry_dirty_before = self._uncommitted_paths()
+            retry_prompt = render_task_completion_retry_prompt(
                 prompt,
+                self.options.plan_file,
+                selected_task.number,
+                selected_task.title,
+                current_task.section,
+                selected_task.has_implicit_tracking,
+            )
+            result = self._run_task_agent(
+                retry_prompt,
                 retry_guard=(
                     lambda _result: self._prepare_task_retry(
                         selected_task,
-                        plan_before,
-                        context_before,
-                        head_before,
-                        dirty_before,
+                        retry_plan_before,
+                        retry_context_before,
+                        retry_head_before,
+                        retry_dirty_before,
                     )
                 ),
             )
             self._prefix_new_commits(
-                head_before,
-                f"task {task_label}",
+                retry_head_before,
+                f"task completion retry {completion_retries}: {task_label}",
             )
             self._accept_task_result_or_raise(
                 result,
@@ -169,78 +252,15 @@ class Runner:
                 head_before,
                 dirty_before,
             )
-            completion_retries = 0
-            while (
-                completion_retries < max(0, self.options.task_completion_retries)
-                and self._can_retry_incomplete_task(
-                    selected_task,
-                    plan_before,
-                    context_before,
-                )
-            ):
-                completion_retries += 1
-                current_task = self._matching_task(self._parse_plan_file(), selected_task)
-                assert current_task is not None
-                self.log.section(
-                    f"task completion retry {completion_retries}: {task_label}"
-                )
-                self.log.diagnostic(
-                    "session=task event=completion_retry_scheduled "
-                    f"task={task_label!r} attempt={completion_retries} "
-                    f"attempts={max(0, self.options.task_completion_retries)}"
-                )
-                retry_plan_before = self.options.plan_file.read_text(encoding="utf-8")
-                retry_context_before = self._plan_context_snapshot()
-                retry_head_before = self._git().head_commit()
-                retry_dirty_before = self._uncommitted_paths()
-                retry_prompt = render_task_completion_retry_prompt(
-                    prompt,
-                    self.options.plan_file,
-                    selected_task.number,
-                    selected_task.title,
-                    current_task.section,
-                    selected_task.has_implicit_tracking,
-                )
-                result = self.executor.run(
-                    retry_prompt,
-                    retry_guard=(
-                        lambda _result: self._prepare_task_retry(
-                            selected_task,
-                            retry_plan_before,
-                            retry_context_before,
-                            retry_head_before,
-                            retry_dirty_before,
-                        )
-                    ),
-                )
-                self._prefix_new_commits(
-                    retry_head_before,
-                    f"task completion retry {completion_retries}: {task_label}",
-                )
-                self._accept_task_result_or_raise(
-                    result,
-                    selected_task,
-                    plan_before,
-                    context_before,
-                    head_before,
-                    dirty_before,
-                )
-            self._validate_completed_task_iteration(
-                selected_task,
-                plan_before,
-                context_before,
-                head_before,
-                dirty_before,
-                completion_retries,
-            )
-            if self.dashboard is not None:
-                self.dashboard.task_finished()
-            if result.signal == ALL_TASKS_DONE and not self._has_uncompleted_work():
-                return
-            if not self._has_uncompleted_work():
-                return
-            time.sleep(self.options.delay_seconds)
-        raise RuntimeError(f"max task iterations reached: {self.options.max_iterations}")
+        self._validate_completed_task_iteration(
+            selected_task,
+            plan_before,
+            context_before,
+            head_before,
+            dirty_before,
+            completion_retries,
+        )
+        return result
 
     def run_review(self) -> None:
         if self.dashboard is not None:
@@ -559,9 +579,10 @@ class Runner:
                 head_before,
                 dirty_before,
             ):
-                self._restore_plan_snapshot(
+                self._restore_plan_snapshot_if_safe(
                     plan_before,
                     selected_task,
+                    head_before,
                     reason="attempts_exhausted",
                 )
                 if (
@@ -582,12 +603,26 @@ class Runner:
                 f"task={task_label!r} reason=committed_task_completion"
             )
         if result.signal == TASK_FAILED:
-            self._restore_plan_snapshot(
-                plan_before,
+            if self._task_iteration_completed_cleanly(
                 selected_task,
-                reason="task_failed",
-            )
-            raise RuntimeError("task failed")
+                plan_before,
+                context_before,
+                head_before,
+                dirty_before,
+            ):
+                self.log.diagnostic(
+                    "session=task event=signal_conflict "
+                    f"task={task_label!r} signal=TASK_FAILED "
+                    "action=accept_committed_completion"
+                )
+            else:
+                self._restore_plan_snapshot_if_safe(
+                    plan_before,
+                    selected_task,
+                    head_before,
+                    reason="task_failed",
+                )
+                raise RuntimeError("task failed")
 
     def _can_retry_incomplete_task(
         self,
@@ -642,12 +677,30 @@ class Runner:
             )
             return False
 
-        self._restore_plan_snapshot(
+        self._restore_plan_snapshot_if_safe(
             plan_before,
             selected_task,
+            head_before,
             reason="retry",
         )
         return True
+
+    def _restore_plan_snapshot_if_safe(
+        self,
+        plan_before: str,
+        selected_task: Task,
+        head_before: str,
+        *,
+        reason: str,
+    ) -> None:
+        if self._git().head_commit() != head_before:
+            self.log.diagnostic(
+                "session=task event=plan_snapshot_restore_skipped "
+                f"task={self._task_label(selected_task)!r} reason={reason!r} "
+                "cause=head_changed"
+            )
+            return
+        self._restore_plan_snapshot(plan_before, selected_task, reason=reason)
 
     def _restore_plan_snapshot(
         self,
@@ -884,7 +937,55 @@ class Runner:
             return recovered
 
     def _git(self) -> GitService:
-        return GitService(Path("."))
+        return GitService(self._active_cwd or Path("."))
+
+    def _run_task_agent(
+        self,
+        prompt: str,
+        *,
+        retry_guard: Callable[[ExecResult], bool],
+    ) -> ExecResult:
+        if self._active_cwd is None:
+            return self.executor.run(prompt, retry_guard=retry_guard)
+        return self.executor.run(
+            prompt,
+            retry_guard=retry_guard,
+            cwd=self._active_cwd,
+        )
+
+    @contextmanager
+    def _use_task_workspace(self, workspace: TaskWorktree) -> Iterator[None]:
+        previous_options = self.options
+        previous_cwd = self._active_cwd
+
+        def remap(path: Optional[Path]) -> Optional[Path]:
+            if path is None:
+                return None
+            try:
+                relative = path.resolve().relative_to(workspace.repo_root.resolve())
+            except ValueError:
+                return path
+            return workspace.path / relative
+
+        self.options = replace(
+            self.options,
+            plan_file=remap(self.options.plan_file),
+            plan_source=remap(self.options.plan_source),
+            plan_context_files=tuple(
+                remapped
+                for path in self.options.plan_context_files
+                if (remapped := remap(path)) is not None
+            ),
+            # The isolated workspace starts clean. Any leftover there is new task
+            # state and cannot be promoted transactionally.
+            allow_dirty=False,
+        )
+        self._active_cwd = workspace.path
+        try:
+            yield
+        finally:
+            self._active_cwd = previous_cwd
+            self.options = previous_options
 
     def _run_single_review_agent(
         self,
@@ -922,7 +1023,8 @@ class Runner:
                 )
                 for name, focus in agents.items()
             }
-            return self.review_agent_executor.run_batch(prompts)
+            results = self.review_agent_executor.run_batch(prompts)
+            return self._retry_crashed_review_agents(prompts, results)
 
         with self.review_worktrees.create(agents) as worktrees:
             prompts = {
@@ -938,10 +1040,42 @@ class Runner:
                 )
                 for name, focus in agents.items()
             }
-            return self.review_agent_executor.run_batch(
+            results = self.review_agent_executor.run_batch(
                 prompts,
                 workdirs=worktrees.paths,
             )
+            return self._retry_crashed_review_agents(
+                prompts,
+                results,
+                workdirs=worktrees.paths,
+            )
+
+    def _retry_crashed_review_agents(
+        self,
+        prompts: dict[str, str],
+        results: dict[str, ExecResult],
+        *,
+        workdirs: Optional[dict[str, Path]] = None,
+    ) -> dict[str, ExecResult]:
+        recovered = dict(results)
+        crashed = [
+            name
+            for name in prompts
+            if name in recovered and recovered[name].dependency_crash
+        ]
+        for name in crashed:
+            self.log.diagnostic(
+                "session=review event=sequential_crash_retry "
+                f"agent={name!r} reason=dependency_crash"
+            )
+            if workdirs is None:
+                recovered[name] = self.review_agent_executor.run(prompts[name])
+            else:
+                recovered[name] = self.review_agent_executor.run(
+                    prompts[name],
+                    cwd=workdirs[name],
+                )
+        return recovered
 
     def _context_for_review_worktree(
         self,
@@ -1231,6 +1365,8 @@ def describe_failure(label: str, result: ExecResult) -> str:
     parts = [label]
     if result.rate_limited:
         parts.append("rate limited")
+    elif result.dependency_crash:
+        parts.append("crashed in an external dependency")
     elif result.transient_error:
         parts.append("hit a transient error")
     elif result.idle_timed_out:

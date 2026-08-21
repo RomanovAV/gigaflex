@@ -21,6 +21,7 @@ from .git import (
     GitError,
     GitService,
     ReviewWorktreeManager,
+    TaskWorktreeManager,
     branch_name_from_plan,
     jira_branch_name,
     move_plan_to_completed,
@@ -909,9 +910,29 @@ def main(argv: Optional[list[str]] = None) -> int:
         if args.dry_run
         else ReviewWorktreeManager(git, diagnostic=log.diagnostic)
     )
+    task_worktrees = (
+        None
+        if args.dry_run or args.review
+        else TaskWorktreeManager(
+            git,
+            diagnostic=log.diagnostic,
+            ignored_paths=tuple(
+                path.resolve().relative_to(git.repo_root())
+                for path in (
+                    progress_file,
+                    stats_file,
+                    dashboard_json,
+                    dashboard_html,
+                )
+                if path.resolve().is_relative_to(git.repo_root())
+            ),
+        )
+    )
 
     exit_code = 0
     run_status = "success"
+    failure_reason = ""
+    failure_phase = ""
     try:
         Runner(
             options,
@@ -922,6 +943,7 @@ def main(argv: Optional[list[str]] = None) -> int:
             finalize_executor=finalize_executor,
             dashboard=dashboard,
             review_worktrees=review_worktrees,
+            task_worktrees=task_worktrees,
         ).run()
         if (
             not args.dry_run
@@ -955,17 +977,38 @@ def main(argv: Optional[list[str]] = None) -> int:
         print("\ninterrupted", file=sys.stderr)
         exit_code = 130
         run_status = "interrupted"
+        failure_reason = "run interrupted"
+        failure_phase = str(dashboard.state.get("phase", "unknown"))
         if not args.dry_run:
+            log.section("failure")
+            log.write(
+                f"phase: {failure_phase}\nreason: {failure_reason}\n"
+            )
             dashboard.interrupt()
     except Exception as exc:
         print(f"error: {exc}", file=sys.stderr)
         exit_code = 1
         run_status = "failed"
+        failure_reason = str(exc)
+        failure_phase = str(dashboard.state.get("phase", "unknown"))
         if not args.dry_run:
+            log.section("failure")
+            log.write(
+                f"phase: {failure_phase}\n"
+                f"error: {type(exc).__name__}: {failure_reason}\n"
+            )
+            log.diagnostic(
+                "session=runner event=failed "
+                f"phase={failure_phase!r} error={failure_reason!r}"
+            )
             dashboard.fail(str(exc))
     finally:
         if not args.dry_run:
-            statistics.finish(run_status)
+            statistics.finish(
+                run_status,
+                failure_reason=failure_reason,
+                failure_phase=failure_phase,
+            )
             report = statistics.render_text()
             statistics.write_json(stats_file)
             log.section("run statistics")

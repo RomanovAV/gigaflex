@@ -1398,6 +1398,50 @@ print(json.dumps({
             self.assertIn(f"statistics: {stats_file}", stdout.getvalue())
             self.assertIn("interrupted", stderr.getvalue())
 
+    def test_failed_run_writes_reason_to_progress_and_statistics(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp, tempfile.TemporaryDirectory() as home_tmp:
+            tmp_path = Path(tmp)
+            home = Path(home_tmp)
+            original_cwd = Path.cwd()
+            try:
+                os.chdir(tmp_path)
+                subprocess.run(["git", "init"], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                subprocess.run(["git", "config", "user.email", "test@example.com"], check=True)
+                subprocess.run(["git", "config", "user.name", "GigaFlex Test"], check=True)
+                Path("README.md").write_text("# Demo\n", encoding="utf-8")
+                subprocess.run(["git", "add", "README.md"], check=True)
+                subprocess.run(["git", "commit", "-m", "initial"], check=True, stdout=subprocess.PIPE)
+
+                with (
+                    patch.dict(os.environ, {"HOME": str(home)}),
+                    patch("gigaflex.cli.Runner.run", side_effect=RuntimeError("review crashed")),
+                    contextlib.redirect_stdout(io.StringIO()),
+                    contextlib.redirect_stderr(io.StringIO()),
+                ):
+                    code = main(
+                        [
+                            "--review",
+                            "--base-ref",
+                            "HEAD",
+                            "--gigacode-command",
+                            "unused-gigacode",
+                        ]
+                    )
+            finally:
+                os.chdir(original_cwd)
+
+            progress = tmp_path / ".gigaflex/progress/progress-review.txt"
+            stats_file = tmp_path / ".gigaflex/progress/stats-review.json"
+            stats = json.loads(stats_file.read_text(encoding="utf-8"))
+            progress_text = progress.read_text(encoding="utf-8")
+            self.assertEqual(1, code)
+            self.assertEqual("failed", stats["status"])
+            self.assertEqual("review crashed", stats["failure_reason"])
+            self.assertEqual("startup", stats["failure_phase"])
+            self.assertIn("=== failure", progress_text)
+            self.assertIn("error: RuntimeError: review crashed", progress_text)
+            self.assertIn("session=runner event=failed", progress_text)
+
     def test_plan_run_can_use_isolated_worktree_branch(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)

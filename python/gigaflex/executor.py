@@ -53,6 +53,14 @@ DEFAULT_RATE_LIMIT_PATTERNS = [
     "You've hit your usage limit",
 ]
 
+DEPENDENCY_CRASH_RETURN_CODES = {139, -11}
+DEPENDENCY_CRASH_PATTERNS = (
+    "Segmentation fault",
+    "Ошибка сегментирования",
+    "libsecret-CRITICAL",
+    "secret_value_get_text",
+)
+
 
 @dataclass
 class ExecResult:
@@ -73,6 +81,7 @@ class ExecResult:
     models: tuple[str, ...] = ()
     usage: Optional[TokenUsage] = None
     approval_denied: bool = False
+    dependency_crash: bool = False
 
     @property
     def ok(self) -> bool:
@@ -677,6 +686,10 @@ class GigaCodeExecutor:
         failure_text = f"{text}\n{error_text}"
         api_error = _extract_api_error(text) or _extract_api_error(error_text)
         failed = returncode != 0 or timed_out or idle_timed_out or bool(api_error)
+        dependency_crash = failed and (
+            returncode in DEPENDENCY_CRASH_RETURN_CODES
+            or matches_any(failure_text, DEPENDENCY_CRASH_PATTERNS)
+        )
         result = ExecResult(
             output=text,
             error_output=error_text,
@@ -694,6 +707,7 @@ class GigaCodeExecutor:
             models=stream_decoder.models,
             usage=stream_decoder.usage,
             approval_denied=approval_denied,
+            dependency_crash=dependency_crash,
         )
         self._event(
             session,
@@ -712,6 +726,7 @@ class GigaCodeExecutor:
             rate_limited=result.rate_limited,
             api_error=result.api_error or False,
             approval_unavailable=result.approval_unavailable,
+            dependency_crash=result.dependency_crash,
         )
         return result
 
@@ -1134,6 +1149,8 @@ def _failure_reason(result: ExecResult) -> str:
         return "session_timeout"
     if result.idle_timed_out:
         return "idle_timeout"
+    if result.dependency_crash:
+        return "dependency_crash"
     if result.rate_limited:
         return "rate_limited"
     if result.transient_error:

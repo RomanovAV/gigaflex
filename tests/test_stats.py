@@ -79,6 +79,21 @@ class RunStatisticsTest(unittest.TestCase):
         self.assertEqual("interrupted", stats.to_dict()["status"])
         self.assertIn("status: interrupted", stats.render_text())
 
+    def test_records_failure_phase_and_reason(self) -> None:
+        stats = RunStatistics()
+
+        stats.finish(
+            "failed",
+            failure_phase="tasks",
+            failure_reason="task failed",
+        )
+
+        data = stats.to_dict()
+        self.assertEqual("tasks", data["failure_phase"])
+        self.assertEqual("task failed", data["failure_reason"])
+        self.assertIn("failure phase: tasks", stats.render_text())
+        self.assertIn("failure reason: task failed", stats.render_text())
+
     def test_statistics_path_matches_progress_file(self) -> None:
         self.assertEqual(
             Path(".gigaflex/progress/stats-demo.json"),

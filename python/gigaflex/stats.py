@@ -35,6 +35,8 @@ class RunStatistics:
         self._started = time.monotonic()
         self._finished: Optional[float] = None
         self._status = "running"
+        self._failure_reason = ""
+        self._failure_phase = ""
         self._invocations: list[InvocationStat] = []
         self._lock = threading.Lock()
 
@@ -42,11 +44,19 @@ class RunStatistics:
         with self._lock:
             self._invocations.append(invocation)
 
-    def finish(self, status: str = "success") -> None:
+    def finish(
+        self,
+        status: str = "success",
+        *,
+        failure_reason: str = "",
+        failure_phase: str = "",
+    ) -> None:
         with self._lock:
             if self._finished is None:
                 self._finished = time.monotonic()
             self._status = status
+            self._failure_reason = failure_reason
+            self._failure_phase = failure_phase
 
     @property
     def wall_duration_ms(self) -> int:
@@ -65,6 +75,8 @@ class RunStatistics:
         totals = _sum_usage(known_usage)
         return {
             "status": self.status,
+            "failure_reason": self.failure_reason,
+            "failure_phase": self.failure_phase,
             "wall_duration_ms": self.wall_duration_ms,
             "call_count": len(invocations),
             "summed_call_duration_ms": sum(item.wall_duration_ms for item in invocations),
@@ -97,6 +109,10 @@ class RunStatistics:
             f"{_format_duration(int(data['summed_call_duration_ms']))} "
             "(parallel calls overlap)",
         ]
+        if data["failure_reason"]:
+            lines.insert(1, f"failure reason: {data['failure_reason']}")
+        if data["failure_phase"]:
+            lines.insert(1, f"failure phase: {data['failure_phase']}")
         if usage is None:
             lines.append("tokens: unknown (no completed GigaCode result events)")
         else:
@@ -143,6 +159,16 @@ class RunStatistics:
     def status(self) -> str:
         with self._lock:
             return self._status
+
+    @property
+    def failure_reason(self) -> str:
+        with self._lock:
+            return self._failure_reason
+
+    @property
+    def failure_phase(self) -> str:
+        with self._lock:
+            return self._failure_phase
 
 
 def statistics_path(progress_file: Path) -> Path:

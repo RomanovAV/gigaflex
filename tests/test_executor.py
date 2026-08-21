@@ -704,6 +704,27 @@ raise SystemExit(7)
             self.assertTrue(result.transient_error)
             self.assertFalse(result.ok)
 
+    def test_classifies_libsecret_segmentation_fault_as_dependency_crash(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            script = write_script(
+                Path(tmp) / "libsecret_crash.py",
+                """#!/usr/bin/env python3
+import sys
+sys.stdin.read()
+print("libsecret-CRITICAL: secret_value_get_text assertion failed", file=sys.stderr)
+raise SystemExit(139)
+""",
+            )
+
+            result = GigaCodeExecutor(
+                command=str(script),
+                retry_count=0,
+                output=lambda _line: None,
+            ).run("prompt")
+
+            self.assertTrue(result.dependency_crash)
+            self.assertFalse(result.ok)
+
     def test_marks_api_error_as_failure_when_process_exits_zero(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             script = write_script(

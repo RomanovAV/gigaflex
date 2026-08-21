@@ -10,11 +10,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "python"))
 
 from gigaflex.dashboard import ProgressDashboard
 from gigaflex.executor import ExecResult, GigaCodeExecutor
-from gigaflex.git import GitService, ReviewWorktreeManager
+from gigaflex.git import GitService, ReviewWorktreeManager, TaskWorktreeManager
 from gigaflex.progress import ProgressLog
 from gigaflex.prompts import REVIEW_AGENTS
 from gigaflex.runner import RunOptions, Runner
-from gigaflex.signals import FINALIZE_DONE, REVIEW_DONE
+from gigaflex.signals import FINALIZE_DONE, REVIEW_DONE, TASK_FAILED
 
 
 class FakeExecutor:
@@ -1488,6 +1488,148 @@ class RunnerTest(unittest.TestCase):
             )
 
             runner.run_tasks()
+
+    def test_task_failed_signal_does_not_override_clean_committed_completion(self) -> None:
+        with temporary_repo() as (repo, plan):
+            def complete_and_report_false_failure(_prompt):
+                plan.write_text(
+                    plan.read_text(encoding="utf-8").replace("- [ ]", "- [x]"),
+                    encoding="utf-8",
+                )
+                git(repo, "add", str(plan))
+                git(repo, "commit", "-m", "feat: complete task")
+                return ExecResult(
+                    output=f"completed\n{TASK_FAILED}\n",
+                    signal=TASK_FAILED,
+                    returncode=0,
+                )
+
+            progress = repo / "progress.txt"
+            runner = Runner(
+                RunOptions(
+                    plan_file=plan,
+                    progress_file=progress,
+                    tasks_only=True,
+                    finalize_enabled=False,
+                ),
+                CallbackExecutor(complete_and_report_false_failure),  # type: ignore[arg-type]
+                ProgressLog(progress),
+            )
+
+            runner.run_tasks()
+
+            self.assertIn("- [x]", plan.read_text(encoding="utf-8"))
+            self.assertIn(
+                "event=signal_conflict",
+                progress.read_text(encoding="utf-8"),
+            )
+
+    def test_task_runner_uses_transactional_worktree_before_promoting_commit(self) -> None:
+        with temporary_repo() as (repo, plan):
+            (repo / ".gitignore").write_text("progress.txt\n", encoding="utf-8")
+            (repo / "user.txt").write_text("original\n", encoding="utf-8")
+            git(repo, "add", ".gitignore", "user.txt")
+            git(repo, "commit", "-m", "test: add tracked files")
+            (repo / "user.txt").write_text("user change\n", encoding="utf-8")
+            main_head_during_call: list[str] = []
+
+            class IsolatedTaskExecutor:
+                def run(self, _prompt, *, retry_guard=None, cwd=None):
+                    assert cwd is not None
+                    main_head_during_call.append(GitService(repo).head_commit())
+                    isolated_plan = cwd / "plan.md"
+                    isolated_plan.write_text(
+                        isolated_plan.read_text(encoding="utf-8").replace(
+                            "- [ ]",
+                            "- [x]",
+                        ),
+                        encoding="utf-8",
+                    )
+                    (cwd / "result.txt").write_text("done\n", encoding="utf-8")
+                    task_git = GitService(cwd)
+                    task_git.run("add", "plan.md", "result.txt")
+                    task_git.run("commit", "-m", "feat: isolated completion")
+                    return ExecResult(output="completed\n", returncode=0)
+
+            head_before = GitService(repo).head_commit()
+            progress = repo / "progress.txt"
+            runner = Runner(
+                RunOptions(
+                    plan_file=plan,
+                    progress_file=progress,
+                    tasks_only=True,
+                    finalize_enabled=False,
+                    allow_dirty=True,
+                ),
+                IsolatedTaskExecutor(),  # type: ignore[arg-type]
+                ProgressLog(progress),
+                task_worktrees=TaskWorktreeManager(
+                    GitService(repo),
+                    diagnostic=ProgressLog(progress).diagnostic,
+                    ignored_paths=(Path("progress.txt"),),
+                ),
+            )
+
+            runner.run_tasks()
+
+            self.assertEqual([head_before], main_head_during_call)
+            self.assertNotEqual(head_before, GitService(repo).head_commit())
+            self.assertEqual("done\n", (repo / "result.txt").read_text(encoding="utf-8"))
+            self.assertEqual("user change\n", (repo / "user.txt").read_text(encoding="utf-8"))
+            self.assertIn("- [x]", plan.read_text(encoding="utf-8"))
+
+    def test_parallel_review_retries_dependency_crash_sequentially(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+
+            class CrashThenRecoverExecutor(FakeExecutor):
+                def __init__(self):
+                    super().__init__()
+                    self.sequential_prompts: list[str] = []
+
+                def run_batch(self, prompts):
+                    self.batch_prompts.append(prompts)
+                    return {
+                        name: ExecResult(
+                            output="" if name == "quality" else "NO FINDINGS\n",
+                            error_output=(
+                                "libsecret-CRITICAL: secret_value_get_text failed\n"
+                                if name == "quality"
+                                else ""
+                            ),
+                            returncode=139 if name == "quality" else 0,
+                            dependency_crash=name == "quality",
+                        )
+                        for name in prompts
+                    }
+
+                def run(self, prompt, *, retry_guard=None):
+                    self.sequential_prompts.append(prompt)
+                    return ExecResult(output="NO FINDINGS\n", returncode=0)
+
+            executor = CrashThenRecoverExecutor()
+            progress = tmp_path / "progress.txt"
+            runner = Runner(
+                RunOptions(
+                    plan_file=None,
+                    progress_file=progress,
+                    review_only=True,
+                    parallel_review=True,
+                    finalize_enabled=False,
+                ),
+                executor,  # type: ignore[arg-type]
+                ProgressLog(progress),
+                review_agent_executor=executor,  # type: ignore[arg-type]
+            )
+
+            runner.run_review()
+
+            self.assertEqual(1, len(executor.batch_prompts))
+            self.assertEqual(1, len(executor.sequential_prompts))
+            self.assertIn(
+                "event=sequential_crash_retry",
+                progress.read_text(encoding="utf-8"),
+            )
 
     def test_task_iteration_adds_jira_prefix_to_commit_message(self) -> None:
         with temporary_repo() as (repo, plan):

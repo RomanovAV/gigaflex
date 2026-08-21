@@ -124,6 +124,38 @@ class ProgressDashboardTest(unittest.TestCase):
                 (root / "status.html").read_text(encoding="utf-8"),
             )
 
+    def test_dependency_crash_has_specific_session_error(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            dashboard = ProgressDashboard(
+                root / "status.json",
+                root / "status.html",
+                name="review",
+                plan_file=None,
+            )
+            dashboard.start()
+            dashboard.executor_event(
+                "review-agent:quality",
+                "attempt_started",
+                {"attempt": 1},
+            )
+            dashboard.executor_event(
+                "review-agent:quality",
+                "finished",
+                {
+                    "returncode": 139,
+                    "duration_ms": 100,
+                    "dependency_crash": True,
+                },
+            )
+
+            session = dashboard.state["sessions"]["review-agent:quality"]
+            self.assertEqual("failed", session["status"])
+            self.assertEqual(
+                "GigaCode crashed in an external dependency",
+                session["error"],
+            )
+
     def test_tracks_review_status_and_attempt_history(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
