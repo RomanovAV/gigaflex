@@ -383,6 +383,10 @@ Review behavior:
   findings require another specialist pass. A `blocked` decision gets one
   focused audit against the repository, plan, and named external sources;
   only a verified blocker that remains after that audit stops the run
+- accepted `fixed` and `rejected` decisions are retained in a compact in-run
+  memory and supplied to later review and synthesis passes, preventing agents
+  from reopening settled claims merely to prefer a different valid convention;
+  current repository evidence can still override stale memory
 - explanatory synthesis text is removed when the complete expected decision
   ledger can be recovered deterministically; if scoped ledger reconciliation is
   still malformed, the runner stops with a review-protocol error instead of
@@ -443,6 +447,7 @@ retry_patterns = FYA_TRANSIENT_TIMEOUT,API Error: 529,API Error: 502,API Error: 
 rate_limit_patterns = Rate limit exceeded,rate limit reached,429 Too Many Requests,quota exceeded,insufficient_quota,You've hit your usage limit
 wait_on_rate_limit =
 review_workers = 5
+review_iterations = 10
 finalize_enabled = true
 create_branch = true
 worktree = false

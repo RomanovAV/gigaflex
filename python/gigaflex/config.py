@@ -34,7 +34,7 @@ class Config:
     prompts_dir: Path = Path(".gigaflex/prompts")
     default_branch: str = ""
     max_iterations: int = 50
-    review_iterations: int = 5
+    review_iterations: int = 10
     finalize_enabled: bool = True
     session_timeout: Optional[int] = 1800
     idle_timeout: Optional[int] = 900
@@ -271,7 +271,7 @@ DEFAULT_CONFIG_TEXT = """[gigaflex]
 # Legacy explicit review base; leave empty to capture the launch branch and commit.
 # default_branch =
 # max_iterations = 50
-# review_iterations = 5
+# review_iterations = 10
 # finalize_enabled = true
 # session_timeout = 1800
 # idle_timeout = 900

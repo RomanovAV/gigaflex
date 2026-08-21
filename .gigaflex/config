@@ -12,7 +12,7 @@
 # prompts_dir = .gigaflex/prompts
 # default_branch =
 # max_iterations = 50
-# review_iterations = 5
+# review_iterations = 10
 # finalize_enabled = true
 # session_timeout = 1800
 # idle_timeout = 900

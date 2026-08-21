@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import hashlib
 from html import escape
 from pathlib import PurePosixPath
 import re
@@ -93,6 +94,18 @@ class IdentifiedReviewFinding:
 @dataclass(frozen=True)
 class SynthesisDecision:
     finding_id: str
+    decision: str
+    reason: str
+
+
+@dataclass(frozen=True)
+class ReviewDecisionRecord:
+    fingerprint: str
+    agent: str
+    severity: str
+    category: str
+    file: str
+    evidence: str
     decision: str
     reason: str
 
@@ -195,6 +208,44 @@ def identify_review_findings(outputs: dict[str, str]) -> list[IdentifiedReviewFi
                 )
             )
     return identified
+
+
+def build_review_decision_records(
+    findings: list[IdentifiedReviewFinding],
+    decisions: list[SynthesisDecision],
+) -> list[ReviewDecisionRecord]:
+    decisions_by_id = {decision.finding_id: decision for decision in decisions}
+    records: list[ReviewDecisionRecord] = []
+    for item in findings:
+        decision = decisions_by_id.get(item.finding_id)
+        if decision is None:
+            continue
+        finding = item.finding
+        records.append(
+            ReviewDecisionRecord(
+                fingerprint=review_finding_fingerprint(finding),
+                agent=item.agent,
+                severity=finding.severity,
+                category=finding.category,
+                file=finding.file,
+                evidence=finding.evidence,
+                decision=decision.decision,
+                reason=decision.reason,
+            )
+        )
+    return records
+
+
+def review_finding_fingerprint(finding: ReviewFinding) -> str:
+    normalized = "\n".join(
+        _normalize_fingerprint_text(value)
+        for value in (finding.category, finding.file, finding.evidence)
+    )
+    return hashlib.sha256(normalized.encode("utf-8")).hexdigest()[:12]
+
+
+def _normalize_fingerprint_text(value: str) -> str:
+    return " ".join(value.casefold().split())
 
 
 def parse_synthesis_output(

@@ -195,12 +195,16 @@ class RunnerTest(unittest.TestCase):
                     }
 
             review_executor = RoundReviewExecutor()
-            synthesis_executor = CallbackExecutor(
-                lambda _prompt: ExecResult(
+            synthesis_prompts = []
+
+            def synthesize(prompt):
+                synthesis_prompts.append(prompt)
+                return ExecResult(
                     output=synthesis_decision("F001", "fixed"),
                     returncode=0,
                 )
-            )
+
+            synthesis_executor = CallbackExecutor(synthesize)
             runner = Runner(
                 RunOptions(
                     plan_file=None,
@@ -224,11 +228,25 @@ class RunnerTest(unittest.TestCase):
             expected_followup = {"quality", "implementation", "documentation"}
             self.assertEqual(expected_followup, set(review_executor.batch_prompts[1]))
             self.assertEqual(expected_followup, set(review_executor.batch_prompts[2]))
+            second_prompt = review_executor.batch_prompts[1]["quality"]
+            self.assertIn("Runner-maintained prior review decision memory", second_prompt)
+            self.assertIn("decision: fixed", second_prompt)
+            self.assertIn("file: docs/report.md", second_prompt)
+            self.assertEqual(2, len(synthesis_prompts))
+            self.assertNotIn(
+                "Runner-maintained prior review decision memory",
+                synthesis_prompts[0],
+            )
+            self.assertIn(
+                "Runner-maintained prior review decision memory",
+                synthesis_prompts[1],
+            )
             progress = (tmp_path / "progress.txt").read_text(encoding="utf-8")
             self.assertIn(
                 "iteration=2 agents='quality,implementation,documentation'",
                 progress,
             )
+            self.assertIn("event=decision_memory_updated", progress)
 
     def test_single_clean_review_skips_synthesis(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

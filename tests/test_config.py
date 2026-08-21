@@ -62,6 +62,9 @@ class ConfigTest(unittest.TestCase):
     def test_retry_count_defaults_to_one_retry(self) -> None:
         self.assertEqual(1, Config().retry_count)
 
+    def test_review_iterations_default_to_ten(self) -> None:
+        self.assertEqual(10, Config().review_iterations)
+
     def test_retry_delay_defaults_to_five_seconds(self) -> None:
         self.assertEqual(5.0, Config().retry_delay)
 

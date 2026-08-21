@@ -26,7 +26,11 @@ from .prompts import (
     render_task_prompt,
 )
 from .review import (
+    IdentifiedReviewFinding,
+    ReviewDecisionRecord,
     ReviewOutputError,
+    SynthesisDecision,
+    build_review_decision_records,
     identify_review_findings,
     normalize_review_output,
     parse_synthesis_output,
@@ -44,6 +48,7 @@ from .stats import statistics_path
 
 
 CORE_REVIEW_AGENTS = ("quality", "implementation")
+MAX_REVIEW_DECISION_MEMORY = 30
 
 
 @dataclass
@@ -52,7 +57,7 @@ class RunOptions:
     progress_file: Path
     default_branch: str = "main"
     max_iterations: int = 50
-    review_iterations: int = 5
+    review_iterations: int = 10
     tasks_only: bool = False
     review_only: bool = False
     finalize_enabled: bool = True
@@ -85,6 +90,7 @@ class Runner:
         self.synthesis_executor = synthesis_executor or executor
         self.review_agent_executor = review_agent_executor or self.synthesis_executor
         self.finalize_executor = finalize_executor or self.synthesis_executor
+        self._review_decision_memory: dict[str, ReviewDecisionRecord] = {}
         self.log = log
         self.dashboard = dashboard
         self.review_worktrees = review_worktrees
@@ -258,6 +264,7 @@ class Runner:
                 lambda review_context: render_review_prompt(
                     self.options.prompts.review,
                     review_context,
+                    decision_memory=self._review_decision_memory_snapshot(),
                 ),
             )
             self._prefix_new_commits(head_before, "review")
@@ -911,6 +918,7 @@ class Runner:
                     name,
                     focus,
                     context,
+                    decision_memory=self._review_decision_memory_snapshot(),
                 )
                 for name, focus in agents.items()
             }
@@ -926,6 +934,7 @@ class Runner:
                         worktrees.paths[name],
                         worktrees.repo_root,
                     ),
+                    decision_memory=self._review_decision_memory_snapshot(),
                 )
                 for name, focus in agents.items()
             }
@@ -993,6 +1002,7 @@ class Runner:
                 self.options.prompts.review_synthesis,
                 findings,
                 context,
+                decision_memory=self._review_decision_memory_snapshot(),
             )
         except ReviewOutputError as exc:
             raise RuntimeError(f"invalid structured review output: {exc}") from exc
@@ -1036,6 +1046,7 @@ class Runner:
                     self._context(),
                     result.output,
                     validation_error,
+                    decision_memory=self._review_decision_memory_snapshot(),
                 )
             )
             self._prefix_new_commits(head_before, "review synthesis reconciliation")
@@ -1088,6 +1099,7 @@ class Runner:
                     self._context(),
                     result.output,
                     blocked_ids,
+                    decision_memory=self._review_decision_memory_snapshot(),
                 )
             )
             self._prefix_new_commits(head_before, "review synthesis blocked audit")
@@ -1123,6 +1135,8 @@ class Runner:
                 "session=review-synthesis event=blocked_audit_completed "
                 f"remaining={','.join(remaining_blocked)!r}"
             )
+
+        self._remember_review_decisions(identified, decisions)
 
         counts = {
             decision: sum(item.decision == decision for item in decisions)
@@ -1162,6 +1176,36 @@ class Runner:
                 "session=review-synthesis event=completion_inferred_from_decisions"
             )
         return completed
+
+    def _review_decision_memory_snapshot(self) -> tuple[ReviewDecisionRecord, ...]:
+        return tuple(self._review_decision_memory.values())
+
+    def _remember_review_decisions(
+        self,
+        findings: list[IdentifiedReviewFinding],
+        decisions: list[SynthesisDecision],
+    ) -> None:
+        added = 0
+        removed = 0
+        for record in build_review_decision_records(findings, decisions):
+            previous = self._review_decision_memory.pop(record.fingerprint, None)
+            if record.decision in {"fixed", "rejected"}:
+                self._review_decision_memory[record.fingerprint] = record
+                added += 1
+            elif previous is not None:
+                removed += 1
+
+        trimmed = 0
+        while len(self._review_decision_memory) > MAX_REVIEW_DECISION_MEMORY:
+            oldest = next(iter(self._review_decision_memory))
+            del self._review_decision_memory[oldest]
+            trimmed += 1
+
+        self.log.diagnostic(
+            "session=review event=decision_memory_updated "
+            f"accepted={added} removed={removed} trimmed={trimmed} "
+            f"retained={len(self._review_decision_memory)}"
+        )
 
     def _prefix_new_commits(self, head_before: str, label: str) -> None:
         if not self.options.jira_task:
