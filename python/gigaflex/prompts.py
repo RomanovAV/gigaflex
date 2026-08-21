@@ -228,7 +228,7 @@ Review {goal}.
 
 Bounded review manifest: {review_manifest}
 
-When the runner-generated manifest is available, use it as the complete changed-file index and inspect its size-capped patch fragments one at a time. If it is unavailable, begin with only bounded discovery commands:
+When the runner-generated manifest is available, use it to locate the size-capped changed-file index and patch fragments. Read exactly one packet file per shell command. If it is unavailable, begin with only bounded discovery commands:
 - git status --short
 - git log {base_ref}..HEAD --oneline
 - git diff {base_ref}...HEAD --stat
@@ -258,7 +258,7 @@ Agent focus:
 
 Bounded review manifest: {review_manifest}
 
-When the runner-generated manifest is available, use it as the complete changed-file index and inspect its size-capped patch fragments one at a time. If it is unavailable, begin with only bounded discovery commands:
+When the runner-generated manifest is available, use it to locate the size-capped changed-file index and patch fragments. Read exactly one packet file per shell command. If it is unavailable, begin with only bounded discovery commands:
 - git status --short
 - git diff {base_ref}...HEAD --stat
 - git diff {base_ref}...HEAD --name-only
@@ -339,10 +339,12 @@ Every finding must identify a concrete, reproducible issue. A suspicion, style p
 
 BOUNDED_REVIEW_PACKET_GUIDANCE = """Runner-generated bounded review context:
 - manifest: `{review_manifest}`
-- read the manifest first; it lists every changed path and its bounded patch fragments
+- read the small routing manifest first; resolve its packet-relative paths against the manifest's directory
+- the manifest points to separately bounded changed-path index, status, diff-stat, and patch files
 - this later instruction replaces any earlier instruction to run a repository-wide `git diff`, `git diff --cached`, or unbounded file dump
-- do not run repository-wide diff commands; inspect one listed patch fragment at a time
-- each fragment is size-capped by the runner; select files relevant to the assigned focus, while using the complete manifest to maintain coverage
+- every shell command that reads the packet must name exactly one file; never concatenate packet files or use wildcards, loops, xargs, `find -exec`, or command substitution to read several at once
+- do not run repository-wide diff commands; inspect one index or patch fragment at a time
+- each file is size-capped by the runner; use the index fragments to select paths relevant to the assigned focus while maintaining coverage
 - read a changed source file directly only when its surrounding context is necessary to verify a concrete issue
 - the manifest and fragments are temporary runner-owned files outside the repository worktree and are deleted after this review batch
 """

@@ -16,7 +16,8 @@ BRANCH_SLUG_RE = re.compile(r"[^A-Za-z0-9._-]+")
 COMMIT_IDENTITY_RE = re.compile(
     r"^(.*) <([^<>]*)> (\d+) ([+-]\d{4})$"
 )
-REVIEW_PATCH_FRAGMENT_CHARS = 16_000
+REVIEW_INDEX_FRAGMENT_CHARS = 4_000
+REVIEW_PATCH_FRAGMENT_CHARS = 8_000
 
 
 class GitError(RuntimeError):
@@ -709,8 +710,12 @@ class _ReviewWorktreeContext:
         assert self.root is not None
         base_commit = self.manager.git.resolve_commit(self.base_ref)
         packet = self.root / "review-context"
+        indexes = packet / "indexes"
         patches = packet / "patches"
-        patches.mkdir(parents=True)
+        summaries = packet / "summaries"
+        indexes.mkdir(parents=True)
+        patches.mkdir()
+        summaries.mkdir()
         self.review_packet = packet
 
         changed_paths = sorted(
@@ -732,6 +737,7 @@ class _ReviewWorktreeContext:
         entries: list[str] = []
         fragment_count = 0
         for file_index, path in enumerate(changed_paths, start=1):
+            path_id = f"{file_index:04d}"
             patch = self.manager.git.run(
                 "diff",
                 "--no-ext-diff",
@@ -746,20 +752,41 @@ class _ReviewWorktreeContext:
                 patch[index:index + REVIEW_PATCH_FRAGMENT_CHARS]
                 for index in range(0, len(patch), REVIEW_PATCH_FRAGMENT_CHARS)
             ] or ["(No textual diff is available for this changed path.)\n"]
-            fragment_paths: list[Path] = []
+            patch_directory = patches / path_id
+            patch_directory.mkdir()
             for chunk_index, chunk in enumerate(chunks, start=1):
-                fragment = patches / f"{file_index:04d}-{chunk_index:03d}.patch"
+                fragment = patch_directory / f"{chunk_index:04d}.patch"
                 fragment.write_text(chunk, encoding="utf-8")
-                fragment_paths.append(fragment)
                 fragment_count += 1
             entries.extend(
                 (
+                    f"path_id: {path_id}",
                     f"path: {json.dumps(str(path), ensure_ascii=False)}",
-                    f"fragments: {len(fragment_paths)}",
-                    *(f"  - {fragment}" for fragment in fragment_paths),
+                    f"patch_directory: patches/{path_id}",
+                    f"patch_fragments: {len(chunks)}",
+                    "patch_name_pattern: NNNN.patch",
                     "",
                 )
             )
+
+        index_fragments = self._write_bounded_fragments(
+            indexes,
+            "index",
+            "\n".join(entries).rstrip() + "\n" if entries else "(no changed paths)\n",
+            REVIEW_INDEX_FRAGMENT_CHARS,
+        )
+        status_fragments = self._write_bounded_fragments(
+            summaries,
+            "status",
+            status.rstrip() + "\n" if status.strip() else "(clean)\n",
+            REVIEW_INDEX_FRAGMENT_CHARS,
+        )
+        stat_fragments = self._write_bounded_fragments(
+            summaries,
+            "diffstat",
+            stat.rstrip() + "\n" if stat.strip() else "(no diff stat)\n",
+            REVIEW_INDEX_FRAGMENT_CHARS,
+        )
 
         manifest = packet / "manifest.txt"
         manifest.write_text(
@@ -770,16 +797,28 @@ class _ReviewWorktreeContext:
                     f"snapshot_commit: {snapshot}",
                     f"changed_paths: {len(changed_paths)}",
                     f"patch_fragments: {fragment_count}",
+                    f"max_index_fragment_chars: {REVIEW_INDEX_FRAGMENT_CHARS}",
                     f"max_fragment_chars: {REVIEW_PATCH_FRAGMENT_CHARS}",
                     "",
-                    "Working-tree status captured before the snapshot:",
-                    status.rstrip() or "(clean)",
+                    "Resolve every packet-relative path against the directory containing this manifest.",
+                    "Read exactly one referenced file per shell command.",
+                    "Do not concatenate files or use wildcards, loops, xargs, or find -exec.",
                     "",
-                    "Overall diff stat:",
-                    stat.rstrip() or "(no diff stat)",
+                    "Changed-path index directory: indexes",
+                    f"Changed-path index fragments: {index_fragments}",
+                    "Changed-path index pattern: index-NNNN.txt",
                     "",
-                    "Changed paths and bounded patch fragments:",
-                    *entries,
+                    "Working-tree status directory: summaries",
+                    f"Working-tree status fragments: {status_fragments}",
+                    "Working-tree status pattern: status-NNNN.txt",
+                    "",
+                    "Diff-stat directory: summaries",
+                    f"Diff-stat fragments: {stat_fragments}",
+                    "Diff-stat pattern: diffstat-NNNN.txt",
+                    "",
+                    "Patch root: patches",
+                    "Each index entry gives one path_id, its patch directory, and fragment count.",
+                    "Read relevant patch files from that directory in numeric order, one per command.",
                 )
             ).rstrip() + "\n",
             encoding="utf-8",
@@ -787,9 +826,29 @@ class _ReviewWorktreeContext:
         self.manager.report(
             "session=review-worktree event=packet_created "
             f"path={str(packet)!r} files={len(changed_paths)} "
-            f"fragments={fragment_count} fragment_chars={REVIEW_PATCH_FRAGMENT_CHARS}"
+            f"index_fragments={index_fragments} patch_fragments={fragment_count} "
+            f"index_chars={REVIEW_INDEX_FRAGMENT_CHARS} "
+            f"patch_chars={REVIEW_PATCH_FRAGMENT_CHARS}"
         )
         return manifest
+
+    @staticmethod
+    def _write_bounded_fragments(
+        directory: Path,
+        prefix: str,
+        content: str,
+        max_chars: int,
+    ) -> int:
+        chunks = [
+            content[index:index + max_chars]
+            for index in range(0, len(content), max_chars)
+        ] or ["\n"]
+        for index, chunk in enumerate(chunks, start=1):
+            (directory / f"{prefix}-{index:04d}.txt").write_text(
+                chunk,
+                encoding="utf-8",
+            )
+        return len(chunks)
 
 
 @dataclass(frozen=True)

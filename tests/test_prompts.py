@@ -240,6 +240,8 @@ class PromptTemplatesTest(unittest.TestCase):
             "replaces any earlier instruction to run a repository-wide `git diff`",
             prompt,
         )
+        self.assertIn("must name exactly one file", prompt)
+        self.assertIn("never concatenate packet files", prompt)
         self.assertIn("deleted after this review batch", prompt)
 
     def test_review_prompt_preserves_strict_code_review_for_mixed_work(self) -> None:
@@ -498,7 +500,7 @@ class PromptTemplatesTest(unittest.TestCase):
             self.assertTrue((base_dir / "config").exists())
             self.assertTrue((Path(tmp) / ".gitignore").exists())
             self.assertIn(".DS_Store", (Path(tmp) / ".gitignore").read_text(encoding="utf-8"))
-            self.assertIn(".gigaflex/progress/", (Path(tmp) / ".gitignore").read_text(encoding="utf-8"))
+            self.assertIn("/.gigaflex/", (Path(tmp) / ".gitignore").read_text(encoding="utf-8"))
             self.assertFalse((base_dir / "prompts").exists())
             self.assertNotIn(base_dir / "prompts", written)
 
@@ -531,7 +533,14 @@ class PromptTemplatesTest(unittest.TestCase):
             init_project_config(base_dir)
 
             self.assertEqual(
-                "build/\n.DS_Store\n.gigaflex/progress/\n.gigaflex/worktrees/\n",
+                "build/\n.DS_Store\n/.gigaflex/\n",
+                gitignore.read_text(encoding="utf-8"),
+            )
+
+            init_project_config(base_dir)
+
+            self.assertEqual(
+                "build/\n.DS_Store\n/.gigaflex/\n",
                 gitignore.read_text(encoding="utf-8"),
             )
 

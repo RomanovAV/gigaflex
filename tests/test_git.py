@@ -9,6 +9,7 @@ from gigaflex.git import (
     BranchBaseline,
     GitError,
     GitService,
+    REVIEW_INDEX_FRAGMENT_CHARS,
     REVIEW_PATCH_FRAGMENT_CHARS,
     ReviewWorktreeManager,
     TaskWorktreeManager,
@@ -92,6 +93,10 @@ class GitServiceTest(unittest.TestCase):
                 manifest = worktrees.review_manifest
                 packet = manifest.parent
                 manifest_text = manifest.read_text(encoding="utf-8")
+                index_files = sorted((packet / "indexes").glob("*.txt"))
+                index_text = "".join(
+                    path.read_text(encoding="utf-8") for path in index_files
+                )
                 self.assertEqual(head_before, git.head_commit())
                 self.assertEqual(
                     "modified\n",
@@ -104,9 +109,22 @@ class GitServiceTest(unittest.TestCase):
                 self.assertFalse((created_paths[0] / "ignored.txt").exists())
                 self.assertEqual("", GitService(created_paths[0]).current_branch())
                 self.assertFalse(GitService(created_paths[0]).is_dirty())
-                self.assertIn('path: "tracked.txt"', manifest_text)
-                self.assertIn('path: "untracked.txt"', manifest_text)
-                fragments = list((packet / "patches").glob("*.patch"))
+                self.assertLessEqual(
+                    len(manifest_text),
+                    REVIEW_INDEX_FRAGMENT_CHARS,
+                )
+                self.assertNotIn(str(packet), manifest_text)
+                self.assertTrue(index_files)
+                self.assertTrue(
+                    all(
+                        len(path.read_text(encoding="utf-8"))
+                        <= REVIEW_INDEX_FRAGMENT_CHARS
+                        for path in index_files
+                    )
+                )
+                self.assertIn('path: "tracked.txt"', index_text)
+                self.assertIn('path: "untracked.txt"', index_text)
+                fragments = list((packet / "patches").rglob("*.patch"))
                 self.assertGreaterEqual(len(fragments), 2)
                 self.assertTrue(
                     all(
@@ -126,6 +144,55 @@ class GitServiceTest(unittest.TestCase):
             self.assertIn("event=packet_created", "\n".join(diagnostics))
             self.assertIn("event=packet_removed", "\n".join(diagnostics))
             self.assertIn("event=removed", "\n".join(diagnostics))
+
+    def test_large_review_packet_keeps_every_routing_file_bounded(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            repo = tmp_path / "repo"
+            repo.mkdir()
+            git = GitService(repo)
+            git.run("init")
+            git.run("config", "user.email", "test@example.com")
+            git.run("config", "user.name", "GigaFlex Test")
+            (repo / "seed.txt").write_text("seed\n", encoding="utf-8")
+            git.run("add", ".")
+            git.run("commit", "-m", "initial")
+            for index in range(120):
+                (repo / f"component-{index:03d}-with-a-descriptive-name.txt").write_text(
+                    f"new content {index}\n",
+                    encoding="utf-8",
+                )
+
+            manager = ReviewWorktreeManager(git, temp_parent=tmp_path)
+            packet = None
+            with manager.create(["quality"]) as worktrees:
+                packet = worktrees.review_manifest.parent
+                manifest_text = worktrees.review_manifest.read_text(encoding="utf-8")
+                index_files = sorted((packet / "indexes").glob("*.txt"))
+                summary_files = sorted((packet / "summaries").glob("*.txt"))
+                patch_files = sorted((packet / "patches").rglob("*.patch"))
+
+                self.assertLessEqual(len(manifest_text), REVIEW_INDEX_FRAGMENT_CHARS)
+                self.assertNotIn(str(packet), manifest_text)
+                self.assertGreater(len(index_files), 1)
+                self.assertTrue(
+                    all(
+                        len(path.read_text(encoding="utf-8"))
+                        <= REVIEW_INDEX_FRAGMENT_CHARS
+                        for path in [*index_files, *summary_files]
+                    )
+                )
+                self.assertEqual(120, len(patch_files))
+                self.assertTrue(
+                    all(
+                        len(path.read_text(encoding="utf-8"))
+                        <= REVIEW_PATCH_FRAGMENT_CHARS
+                        for path in patch_files
+                    )
+                )
+
+            assert packet is not None
+            self.assertFalse(packet.exists())
 
     def test_review_worktrees_are_removed_when_review_raises(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

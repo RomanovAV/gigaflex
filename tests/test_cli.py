@@ -640,7 +640,7 @@ print("- [ ] Do it")
 
             self.assertEqual(0, code)
             self.assertIn("docs: add plan 202", committed)
-            self.assertIn(".gigaflex/config", committed)
+            self.assertNotIn(".gigaflex/config", committed)
             self.assertIn(".gitignore", committed)
             self.assertIn("docs/plans/", committed)
             self.assertIn("add-demo-feature.md", committed)

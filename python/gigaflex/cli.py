@@ -207,6 +207,24 @@ def completed_plan_commit_message(plan_path: Path, jira_task: str = "") -> str:
     return jira_commit_message(jira_task, f"docs: complete plan {plan_path.stem}")
 
 
+def committable_init_paths(
+    paths: list[Path],
+    project_root: Path = Path("."),
+) -> list[Path]:
+    root = project_root.resolve()
+    committable: list[Path] = []
+    for path in paths:
+        resolved = path.resolve() if path.is_absolute() else (root / path).resolve()
+        try:
+            relative = resolved.relative_to(root)
+        except ValueError:
+            committable.append(path)
+            continue
+        if relative.parts[:1] != (".gigaflex",):
+            committable.append(path)
+    return committable
+
+
 def branch_for_plan(
     plan_path: Path,
     explicit_branch: Optional[str],
@@ -644,8 +662,9 @@ def main(argv: Optional[list[str]] = None) -> int:
                 git = GitService(Path("."))
                 if git.is_repo():
                     message = plan_commit_message(plan_path, args.jira_task)
-                    if auto_init_written:
-                        git.commit_paths([*auto_init_written, plan_path], message)
+                    init_commit_paths = committable_init_paths(auto_init_written)
+                    if init_commit_paths:
+                        git.commit_paths([*init_commit_paths, plan_path], message)
                     else:
                         git.commit_file(plan_path, message)
                     log.write(f"committed plan: {message}\n")

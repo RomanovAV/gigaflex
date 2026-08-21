@@ -306,8 +306,7 @@ def init_global_prompt_templates() -> list[Path]:
 
 DEFAULT_GITIGNORE_LINES = [
     ".DS_Store",
-    ".gigaflex/progress/",
-    ".gigaflex/worktrees/",
+    "/.gigaflex/",
 ]
 
 

@@ -11,3 +11,4 @@ dist/
 *.egg-info/
 .gigaflex/progress/
 .gigaflex/worktrees/
+/.gigaflex/
