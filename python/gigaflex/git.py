@@ -434,7 +434,7 @@ class GitService:
                 env=snapshot_env,
             ).stdout.strip()
         finally:
-            index_path.unlink(missing_ok=True)
+            _best_effort_unlink(index_path)
         if not snapshot:
             raise GitError("git commit-tree did not return a review snapshot commit")
         return snapshot
@@ -453,8 +453,43 @@ class GitService:
         if result.returncode != 0 and path.exists():
             shutil.rmtree(path)
 
+    def remove_worktree_best_effort(
+        self,
+        path: Path,
+        *,
+        diagnostic: Callable[[str], None] = lambda _line: None,
+        context: str = "worktree",
+    ) -> bool:
+        try:
+            self.remove_worktree(path)
+        except (OSError, GitError) as exc:
+            _safe_report(
+                diagnostic,
+                f"session={context} event=cleanup_failed path={str(path)!r} "
+                f"error={str(exc)!r}",
+            )
+            return False
+        return True
+
     def prune_worktrees(self) -> None:
         self.run("worktree", "prune", "--expire", "now", check=False)
+
+    def prune_worktrees_best_effort(
+        self,
+        *,
+        diagnostic: Callable[[str], None] = lambda _line: None,
+        context: str = "worktree",
+    ) -> bool:
+        try:
+            self.prune_worktrees()
+        except (OSError, GitError) as exc:
+            _safe_report(
+                diagnostic,
+                f"session={context} event=cleanup_failed action=prune "
+                f"error={str(exc)!r}",
+            )
+            return False
+        return True
 
     def tree_id(self, ref: str) -> str:
         return self.run("rev-parse", f"{ref}^{{tree}}").stdout.strip()
@@ -679,40 +714,34 @@ class _ReviewWorktreeContext:
         root = self.root
         if root is None:
             return
-        cleanup_errors: list[str] = []
         for path in reversed(self.worktrees):
-            try:
-                self.manager.git.remove_worktree(path)
+            if self.manager.git.remove_worktree_best_effort(
+                path,
+                diagnostic=self.manager.diagnostic,
+                context="review-worktree",
+            ):
                 self.manager.report(
                     "session=review-worktree event=removed "
                     f"path={str(path)!r}"
                 )
-            except (OSError, GitError) as exc:
-                cleanup_errors.append(f"{path}: {exc}")
-        try:
-            self.manager.git.prune_worktrees()
-        except (OSError, GitError) as exc:
-            cleanup_errors.append(f"git worktree prune: {exc}")
+        self.manager.git.prune_worktrees_best_effort(
+            diagnostic=self.manager.diagnostic,
+            context="review-worktree",
+        )
         review_context = self.review_context
-        try:
-            if root.exists():
-                shutil.rmtree(root)
-        except OSError as exc:
-            cleanup_errors.append(f"{root}: {exc}")
-        else:
-            if review_context is not None:
-                self.manager.report(
-                    "session=review-worktree event=packet_removed "
-                    f"path={str(review_context)!r}"
-                )
+        root_removed = _best_effort_rmtree(
+            root,
+            diagnostic=self.manager.diagnostic,
+            context="review-worktree",
+        )
+        if root_removed and review_context is not None:
+            self.manager.report(
+                "session=review-worktree event=packet_removed "
+                f"path={str(review_context)!r}"
+            )
         self.worktrees.clear()
         self.review_context = None
         self.root = None
-        if cleanup_errors:
-            raise GitError(
-                "could not remove disposable review worktrees: "
-                + "; ".join(cleanup_errors)
-            )
 
     def _create_review_context_file(self, snapshot: str) -> Path:
         assert self.root is not None
@@ -883,8 +912,15 @@ class TaskWorktreeManager:
             )
             workspace.promoted = True
         finally:
-            self.git.remove_worktree(promotion_path)
-            self.git.prune_worktrees()
+            self.git.remove_worktree_best_effort(
+                promotion_path,
+                diagnostic=self.diagnostic,
+                context="task-worktree",
+            )
+            self.git.prune_worktrees_best_effort(
+                diagnostic=self.diagnostic,
+                context="task-worktree",
+            )
         if adopted_paths:
             shown = ", ".join(str(path) for path in adopted_paths[:10])
             if len(adopted_paths) > 10:
@@ -1001,7 +1037,7 @@ class TaskWorktreeManager:
                 ) from install_error
             raise
         finally:
-            index_backup.unlink(missing_ok=True)
+            _best_effort_unlink(index_backup)
 
     def _assert_main_unchanged(
         self,
@@ -1176,32 +1212,27 @@ class _TaskWorktreeContext:
         root = self.root
         if root is None:
             return
-        cleanup_errors: list[str] = []
         if self.path is not None:
-            try:
-                self.manager.git.remove_worktree(self.path)
+            if self.manager.git.remove_worktree_best_effort(
+                self.path,
+                diagnostic=self.manager.diagnostic,
+                context="task-worktree",
+            ):
                 self.manager.report(
                     "session=task-worktree event=removed "
                     f"path={str(self.path)!r}"
                 )
-            except (OSError, GitError) as exc:
-                cleanup_errors.append(f"{self.path}: {exc}")
-        try:
-            self.manager.git.prune_worktrees()
-        except (OSError, GitError) as exc:
-            cleanup_errors.append(f"git worktree prune: {exc}")
-        try:
-            if root.exists():
-                shutil.rmtree(root)
-        except OSError as exc:
-            cleanup_errors.append(f"{root}: {exc}")
+        self.manager.git.prune_worktrees_best_effort(
+            diagnostic=self.manager.diagnostic,
+            context="task-worktree",
+        )
+        _best_effort_rmtree(
+            root,
+            diagnostic=self.manager.diagnostic,
+            context="task-worktree",
+        )
         self.path = None
         self.root = None
-        if cleanup_errors:
-            raise GitError(
-                "could not remove disposable task worktree: "
-                + "; ".join(cleanup_errors)
-            )
 
 
 @dataclass(frozen=True)
@@ -1295,6 +1326,50 @@ def jira_branch_name(plan_file: Path, jira_task: str) -> str:
 
 def _normalize_relative(path: Path) -> str:
     return Path(str(path)).as_posix().removeprefix("./")
+
+
+def _safe_report(diagnostic: Callable[[str], None], line: str) -> None:
+    try:
+        diagnostic(line)
+    except Exception:
+        pass
+
+
+def _best_effort_unlink(
+    path: Path,
+    *,
+    diagnostic: Callable[[str], None] = lambda _line: None,
+    context: str = "filesystem",
+) -> bool:
+    try:
+        path.unlink(missing_ok=True)
+    except OSError as exc:
+        _safe_report(
+            diagnostic,
+            f"session={context} event=cleanup_failed path={str(path)!r} "
+            f"error={str(exc)!r}",
+        )
+        return False
+    return True
+
+
+def _best_effort_rmtree(
+    path: Path,
+    *,
+    diagnostic: Callable[[str], None] = lambda _line: None,
+    context: str = "filesystem",
+) -> bool:
+    try:
+        if path.exists():
+            shutil.rmtree(path)
+    except OSError as exc:
+        _safe_report(
+            diagnostic,
+            f"session={context} event=cleanup_failed path={str(path)!r} "
+            f"error={str(exc)!r}",
+        )
+        return False
+    return True
 
 
 def worktree_dir_name(branch: str) -> str:

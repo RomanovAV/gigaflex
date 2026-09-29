@@ -10,6 +10,20 @@ from typing import Optional
 from .review import ReviewDecisionRecord, ReviewOutputError, identify_review_findings
 
 
+def _display_path(path: Path) -> str:
+    if path.is_absolute():
+        return str(path)
+    return Path(str(path)).as_posix()
+
+
+def _display_optional_path(path: Optional[Path], fallback: str) -> str:
+    return _display_path(path) if path is not None else fallback
+
+
+def _display_path_text(path: str) -> str:
+    return path.replace("\\", "/")
+
+
 @dataclass(frozen=True)
 class PromptContext:
     plan_file: Optional[Path]
@@ -25,9 +39,9 @@ class PromptContext:
     @property
     def goal(self) -> str:
         if self.plan_kind == "openspec" and self.plan_source:
-            return f"implementation of OpenSpec change at {self.plan_source}"
+            return f"implementation of OpenSpec change at {_display_path(self.plan_source)}"
         if self.plan_file:
-            return f"implementation of plan at {self.plan_file}"
+            return f"implementation of plan at {_display_path(self.plan_file)}"
         return f"current branch vs {self.default_branch}"
 
 
@@ -668,18 +682,21 @@ def render_task_prompt(
     rendered = _with_guidance(
         rendered,
         TASK_PLAN_UPDATE_GUIDANCE.format(
-            plan_file=context.plan_file or "(no plan file)",
+            plan_file=_display_optional_path(context.plan_file, "(no plan file)"),
         ),
     )
     if context.plan_kind == "openspec":
         context_files = "\n".join(
-            f"  - `{path}`" for path in context.plan_context_files
+            f"  - `{_display_path(path)}`" for path in context.plan_context_files
         ) or "  - (no additional context artifacts found)"
         rendered = _with_guidance(
             rendered,
             OPENSPEC_CONTEXT_GUIDANCE.format(
-                plan_source=context.plan_source or "(unknown change directory)",
-                plan_file=context.plan_file or "(no plan file)",
+                plan_source=_display_optional_path(
+                    context.plan_source,
+                    "(unknown change directory)",
+                ),
+                plan_file=_display_optional_path(context.plan_file, "(no plan file)"),
                 plan_context_files=context_files,
             ),
         )
@@ -706,7 +723,7 @@ def render_task_completion_retry_prompt(
     if task_implicit_tracking:
         completion_requirement = (
             f"- after successful verification, add exactly the line between these markers "
-            f"immediately below the selected task heading in `{plan_file}`:\n"
+            f"immediately below the selected task heading in `{_display_path(plan_file)}`:\n"
             f"<COMPLETION_MARKER>\n"
             f"- [x] {task_number}. {task_title}\n"
             f"</COMPLETION_MARKER>"
@@ -714,7 +731,7 @@ def render_task_completion_retry_prompt(
     else:
         completion_requirement = (
             f"- after successful verification, change every remaining actionable `[ ]` item "
-            f"in this selected section of `{plan_file}` to `[x]`"
+            f"in this selected section of `{_display_path(plan_file)}` to `[x]`"
         )
     return _with_guidance(
         task_prompt,
@@ -729,16 +746,24 @@ def render_task_completion_retry_prompt(
 
 def _context_values(context: PromptContext) -> dict[str, object]:
     return {
-        "plan_file": context.plan_file or "(no plan file)",
-        "progress_file": context.progress_file,
+        "plan_file": _display_optional_path(context.plan_file, "(no plan file)"),
+        "progress_file": _display_path(context.progress_file),
         "default_branch": context.default_branch,
         "base_ref": context.default_branch,
         "goal": context.goal,
         "jira_task": context.jira_task,
         "plan_kind": context.plan_kind,
-        "plan_source": context.plan_source or context.plan_file or "(no plan source)",
-        "plan_context_files": "\n".join(str(path) for path in context.plan_context_files),
-        "review_manifest": context.review_manifest or "(no review packet available)",
+        "plan_source": _display_optional_path(
+            context.plan_source or context.plan_file,
+            "(no plan source)",
+        ),
+        "plan_context_files": "\n".join(
+            _display_path(path) for path in context.plan_context_files
+        ),
+        "review_manifest": _display_optional_path(
+            context.review_manifest,
+            "(no review packet available)",
+        ),
     }
 
 
@@ -750,7 +775,7 @@ def render_make_plan(template: str, plan_request: str) -> str:
 
 
 def render_plan_skill(template: str, plan_request: str, plan_path: Path) -> str:
-    return template.format(plan_request=plan_request, plan_path=plan_path)
+    return template.format(plan_request=plan_request, plan_path=_display_path(plan_path))
 
 
 REVIEW_AGENTS = {
@@ -991,7 +1016,9 @@ def _render_followup_review_guidance(
     original_base_ref: str,
 ) -> str:
     files = "\n".join(
-        f"<FOLLOWUP_REVIEW_FILE>{escape(path, quote=False)}</FOLLOWUP_REVIEW_FILE>"
+        "<FOLLOWUP_REVIEW_FILE>"
+        f"{escape(_display_path_text(path), quote=False)}"
+        "</FOLLOWUP_REVIEW_FILE>"
         for path in scope.files
     ) or "<FOLLOWUP_REVIEW_FILE>(no changed path reported)</FOLLOWUP_REVIEW_FILE>"
     decisions = "\n\n".join(
@@ -1000,7 +1027,7 @@ def _render_followup_review_guidance(
                 f'<FOLLOWUP_DECISION fingerprint="{_escape_attribute(record.fingerprint)}">',
                 f"decision: {escape(record.decision, quote=False)}",
                 f"agent: {escape(record.agent, quote=False)}",
-                f"file: {escape(record.file, quote=False)}",
+                f"file: {escape(_display_path_text(record.file), quote=False)}",
                 f"evidence: {escape(_compact_memory_text(record.evidence), quote=False)}",
                 f"reason: {escape(_compact_memory_text(record.reason), quote=False)}",
                 "</FOLLOWUP_DECISION>",
@@ -1041,7 +1068,7 @@ def _with_review_decision_memory(
                     f"agent: {escape(record.agent, quote=False)}",
                     f"severity: {escape(record.severity, quote=False)}",
                     f"category: {escape(record.category, quote=False)}",
-                    f"file: {escape(record.file, quote=False)}",
+                    f"file: {escape(_display_path_text(record.file), quote=False)}",
                     f"evidence: {escape(_compact_memory_text(record.evidence), quote=False)}",
                     f"reason: {escape(_compact_memory_text(record.reason), quote=False)}",
                     "</PRIOR_REVIEW_DECISION>",

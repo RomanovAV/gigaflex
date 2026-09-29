@@ -18,7 +18,14 @@ GLOBAL_CONFIG_RELATIVE_DIR = Path(".config/gigaflex")
 
 
 def global_config_dir() -> Path:
-    return Path.home() / GLOBAL_CONFIG_RELATIVE_DIR
+    return _home_dir() / GLOBAL_CONFIG_RELATIVE_DIR
+
+
+def _home_dir() -> Path:
+    home = os.getenv("HOME") or os.getenv("USERPROFILE")
+    if home:
+        return Path(home).expanduser()
+    return Path.home()
 
 
 @dataclass
@@ -26,7 +33,7 @@ class Config:
     gigacode_command: str = "gigacode"
     gigacode_args: Optional[list[str]] = None
     gigacode_interactive_args: Optional[list[str]] = None
-    gigacode_skills_dir: Path = field(default_factory=lambda: Path.home() / ".gigacode/skills")
+    gigacode_skills_dir: Path = field(default_factory=lambda: _home_dir() / ".gigacode/skills")
     plan_model: Optional[str] = None
     task_model: Optional[str] = None
     review_model: Optional[str] = None

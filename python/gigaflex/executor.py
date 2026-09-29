@@ -209,7 +209,7 @@ class GigaCodeExecutor:
         try:
             self._event(session, "launching")
             proc = subprocess.run(
-                argv,
+                _windows_compatible_argv(argv),
                 timeout=self.timeout if self.timeout and self.timeout > 0 else None,
             )
         except FileNotFoundError as exc:
@@ -487,7 +487,7 @@ class GigaCodeExecutor:
             }
             if cwd is not None:
                 popen_kwargs["cwd"] = str(cwd)
-            proc = subprocess.Popen(argv, **popen_kwargs)
+            proc = subprocess.Popen(_windows_compatible_argv(argv), **popen_kwargs)
         except FileNotFoundError as exc:
             self._event(session, "launch_failed", error="command_not_found")
             raise RuntimeError(f"gigacode command not found: {self.command}") from exc
@@ -637,6 +637,7 @@ class GigaCodeExecutor:
                     )
                 decoder = stdout_decoder if source == "stdout" else stderr_decoder
                 chunk = raw_chunk if isinstance(raw_chunk, str) else decoder.decode(raw_chunk)
+                chunk = _normalize_newlines(chunk)
                 self._notify_event(session, "activity", {"source": source})
                 if source == "stdout" and chunk:
                     for visible in stream_decoder.feed(chunk):
@@ -916,6 +917,19 @@ def _without_model_args(args: list[str]) -> tuple[list[str], str]:
         normalized.append(arg)
         index += 1
     return normalized, ", ".join(model for model in models if model)
+
+
+def _normalize_newlines(text: str) -> str:
+    return text.replace("\r\n", "\n").replace("\r", "\n")
+
+
+def _windows_compatible_argv(argv: list[str]) -> list[str]:
+    if os.name != "nt" or not argv:
+        return argv
+    command = Path(argv[0])
+    if command.suffix.lower() == ".py" and command.exists():
+        return [sys.executable, *argv]
+    return argv
 
 
 def _terminate_process_group(

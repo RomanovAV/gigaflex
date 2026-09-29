@@ -1,7 +1,9 @@
 from pathlib import Path
+import shutil
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "python"))
 
@@ -227,13 +229,50 @@ class GitServiceTest(unittest.TestCase):
                 raise GitError("simulated prune failure")
 
             git.prune_worktrees = failed_prune  # type: ignore[method-assign]
-            with self.assertRaisesRegex(GitError, "simulated prune failure"):
-                with manager.create(["quality"]) as worktrees:
-                    packet = worktrees.review_manifest
+            with manager.create(["quality"]) as worktrees:
+                packet = worktrees.review_manifest
 
             assert packet is not None
             self.assertFalse(packet.exists())
             self.assertIn("event=packet_removed", "\n".join(diagnostics))
+            self.assertIn("simulated prune failure", "\n".join(diagnostics))
+
+    def test_review_cleanup_permission_error_is_nonfatal(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            repo = tmp_path / "repo"
+            repo.mkdir()
+            git = GitService(repo)
+            git.run("init")
+            git.run("config", "user.email", "test@example.com")
+            git.run("config", "user.name", "GigaFlex Test")
+            (repo / "tracked.txt").write_text("tracked\n", encoding="utf-8")
+            git.run("add", ".")
+            git.run("commit", "-m", "initial")
+            diagnostics: list[str] = []
+            manager = ReviewWorktreeManager(
+                git,
+                diagnostic=diagnostics.append,
+                temp_parent=tmp_path,
+            )
+
+            real_rmtree = shutil.rmtree
+            failed = False
+
+            def fail_review_root(path, *args, **kwargs):
+                nonlocal failed
+                if not failed and Path(path).name.startswith("gigaflex-review-"):
+                    failed = True
+                    raise PermissionError("Access is denied")
+                return real_rmtree(path, *args, **kwargs)
+
+            with patch("gigaflex.git.shutil.rmtree", side_effect=fail_review_root):
+                with manager.create(["quality"]) as worktrees:
+                    packet = worktrees.review_manifest
+
+            self.assertTrue(failed)
+            self.assertIsNotNone(packet)
+            self.assertIn("Access is denied", "\n".join(diagnostics))
 
     def test_task_worktree_promotes_only_committed_delta_and_preserves_dirty_state(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -281,6 +320,51 @@ class GitServiceTest(unittest.TestCase):
             self.assertEqual("after\n", progress.read_text(encoding="utf-8"))
             self.assertEqual(status_before, git.run("status", "--short").stdout)
             self.assertIn("event=promoted", "\n".join(diagnostics))
+
+    def test_task_cleanup_permission_error_is_nonfatal_after_promotion(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            repo = tmp_path / "repo"
+            repo.mkdir()
+            git = GitService(repo)
+            git.run("init")
+            git.run("config", "user.email", "test@example.com")
+            git.run("config", "user.name", "GigaFlex Test")
+            (repo / "plan.md").write_text("pending\n", encoding="utf-8")
+            git.run("add", ".")
+            git.run("commit", "-m", "initial")
+            diagnostics: list[str] = []
+            manager = TaskWorktreeManager(
+                git,
+                diagnostic=diagnostics.append,
+                temp_parent=tmp_path,
+            )
+
+            real_rmtree = shutil.rmtree
+            failed = False
+
+            def fail_task_root(path, *args, **kwargs):
+                nonlocal failed
+                if not failed and Path(path).name.startswith("gigaflex-task-"):
+                    failed = True
+                    raise PermissionError("Access is denied")
+                return real_rmtree(path, *args, **kwargs)
+
+            with patch("gigaflex.git.shutil.rmtree", side_effect=fail_task_root):
+                with manager.create("task 1") as workspace:
+                    task_git = GitService(workspace.path)
+                    (workspace.path / "plan.md").write_text(
+                        "complete\n",
+                        encoding="utf-8",
+                    )
+                    task_git.run("add", "plan.md")
+                    task_git.run("commit", "-m", "feat: complete task")
+                    workspace.promote(task_git.head_commit())
+
+            self.assertTrue(failed)
+            self.assertEqual("complete\n", (repo / "plan.md").read_text(encoding="utf-8"))
+            self.assertIn("event=promoted", "\n".join(diagnostics))
+            self.assertIn("Access is denied", "\n".join(diagnostics))
 
     def test_task_worktree_adopts_touched_dirty_file_into_task_commit(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
