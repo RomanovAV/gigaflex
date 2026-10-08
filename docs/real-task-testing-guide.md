@@ -33,11 +33,22 @@ command -v gigacode
 gigacode --version
 ```
 
-Из корня этого репозитория можно проверить сам `gigaflex`:
+Установите `gigaflex` из корня этого репозитория — нужен
+[uv](https://docs.astral.sh/uv/getting-started/installation/):
 
 ```bash
-PYTHONPATH=python python3 -m unittest discover -s tests
-PYTHONPATH=python python3 -m gigaflex.cli --init
+uv tool install .
+gigaflex --version
+```
+
+Команда `gigaflex` после этого доступна из любого каталога. Если она не
+находится, выполните `uv tool update-shell` и откройте новый терминал. После
+обновления репозитория повторите установку: `uv tool install --force .`.
+
+Там же можно проверить сам `gigaflex`:
+
+```bash
+uv run python -m unittest discover -s tests
 ```
 
 Unit-тесты не запускают `gigacode` и не должны выполнять системные команды
@@ -54,14 +65,14 @@ VM/контейнере.
 переопределения:
 
 ```bash
-PYTHONPATH=python python3 -m gigaflex.cli --init-prompts
+gigaflex --init-prompts
 ```
 
-Если тестируете `gigaflex` на другом проекте без установки пакета, запускайте
-его из корня целевого проекта с абсолютным `PYTHONPATH`:
+Все команды ниже запускайте из корня целевого проекта. Локальный конфиг
+создаётся при первом запуске автоматически; явно его создаёт:
 
 ```bash
-PYTHONPATH=/path/to/gigaflex/python python3 -m gigaflex.cli --init
+gigaflex --init
 ```
 
 ## Рекомендуемый сценарий: план -> проверка -> выполнение
@@ -69,7 +80,7 @@ PYTHONPATH=/path/to/gigaflex/python python3 -m gigaflex.cli --init
 Один раз установите встроенный skill планирования:
 
 ```bash
-PYTHONPATH=/path/to/gigaflex/python python3 -m gigaflex.cli --install-planning-skill
+gigaflex --install-planning-skill
 ```
 
 По умолчанию он устанавливается в
@@ -79,7 +90,7 @@ PYTHONPATH=/path/to/gigaflex/python python3 -m gigaflex.cli --install-planning-s
 1. Сформулируйте задачу как обычный рабочий запрос:
 
 ```bash
-PYTHONPATH=/path/to/gigaflex/python python3 -m gigaflex.cli --plan "добавить health check endpoint"
+gigaflex --plan "добавить health check endpoint"
 ```
 
 В обычном терминале команда запускает установленный в GigaCode skill
@@ -90,7 +101,7 @@ PYTHONPATH=/path/to/gigaflex/python python3 -m gigaflex.cli --plan "добави
 Для прежней одношаговой генерации без skill используйте:
 
 ```bash
-PYTHONPATH=/path/to/gigaflex/python python3 -m gigaflex.cli --plan "добавить health check endpoint" --quick
+gigaflex --plan "добавить health check endpoint" --quick
 ```
 
 При запуске без TTY, например в CI, quick-режим выбирается автоматически.
@@ -111,7 +122,7 @@ PYTHONPATH=/path/to/gigaflex/python python3 -m gigaflex.cli --plan "добави
 отредактирован у вас.
 
 ```bash
-PYTHONPATH=/path/to/gigaflex/python python3 -m gigaflex.cli docs/plans/20260617-add-health-check-endpoint.md
+gigaflex docs/plans/20260617-add-health-check-endpoint.md
 ```
 
 По умолчанию раннер создаст или переключит git-ветку из имени плана. После
@@ -123,7 +134,7 @@ PYTHONPATH=/path/to/gigaflex/python python3 -m gigaflex.cli docs/plans/20260617-
 OpenSpec change запускается целиком:
 
 ```bash
-PYTHONPATH=/path/to/gigaflex/python python3 -m gigaflex.cli \
+gigaflex \
   --openspec openspec/changes/add-search
 ```
 
@@ -137,7 +148,7 @@ GigaFlex изменяет чеклист `tasks.md`, а `proposal.md`, `design.m
 Готовый Superpowers implementation plan можно передать как обычный plan-файл:
 
 ```bash
-PYTHONPATH=/path/to/gigaflex/python python3 -m gigaflex.cli \
+gigaflex \
   docs/superpowers/plans/20260701-add-search.md
 ```
 
@@ -169,26 +180,26 @@ PYTHONPATH=/path/to/gigaflex/python python3 -m gigaflex.cli \
 Посмотреть промпты без запуска GigaCode:
 
 ```bash
-PYTHONPATH=/path/to/gigaflex/python python3 -m gigaflex.cli --dry-run docs/plans/20260617-add-health-check-endpoint.md
+gigaflex --dry-run docs/plans/20260617-add-health-check-endpoint.md
 ```
 
 Выполнить только задачи, без review-фазы:
 
 ```bash
-PYTHONPATH=/path/to/gigaflex/python python3 -m gigaflex.cli docs/plans/20260617-add-health-check-endpoint.md --tasks-only
+gigaflex docs/plans/20260617-add-health-check-endpoint.md --tasks-only
 ```
 
 Повторно запустить review текущей ветки относительно базы, сохранённой при
 создании execution-ветки:
 
 ```bash
-PYTHONPATH=/path/to/gigaflex/python python3 -m gigaflex.cli --review
+gigaflex --review
 ```
 
 Запустить review текущей ветки относительно явно указанной ветки:
 
 ```bash
-PYTHONPATH=/path/to/gigaflex/python python3 -m gigaflex.cli --review --base-ref develop
+gigaflex --review --base-ref develop
 ```
 
 Если сохранённой базы ещё нет (например, ветка создана старой версией
@@ -198,7 +209,7 @@ GigaFlex), один раз укажите `--base-ref`. GigaFlex разреши�
 или untracked изменения, запускайте review явно с `--allow-dirty`:
 
 ```bash
-PYTHONPATH=/path/to/gigaflex/python python3 -m gigaflex.cli --review --base-ref develop --allow-dirty
+gigaflex --review --base-ref develop --allow-dirty
 ```
 
 В этом режиме review-промпты включают `git status --short`, committed diff,
@@ -242,25 +253,25 @@ Review-агенты используют `review_model`, а synthesis — `task_
 Не переключать текущую ветку автоматически:
 
 ```bash
-PYTHONPATH=/path/to/gigaflex/python python3 -m gigaflex.cli docs/plans/20260617-add-health-check-endpoint.md --no-branch
+gigaflex docs/plans/20260617-add-health-check-endpoint.md --no-branch
 ```
 
 Запустить в отдельном git worktree, чтобы меньше трогать текущий checkout:
 
 ```bash
-PYTHONPATH=/path/to/gigaflex/python python3 -m gigaflex.cli docs/plans/20260617-add-health-check-endpoint.md --worktree
+gigaflex docs/plans/20260617-add-health-check-endpoint.md --worktree
 ```
 
 Разрешить запуск с грязным рабочим деревом, если это осознанно:
 
 ```bash
-PYTHONPATH=/path/to/gigaflex/python python3 -m gigaflex.cli docs/plans/20260617-add-health-check-endpoint.md --allow-dirty
+gigaflex docs/plans/20260617-add-health-check-endpoint.md --allow-dirty
 ```
 
 Включить корпоративную Jira-политику веток и коммитов:
 
 ```bash
-PYTHONPATH=/path/to/gigaflex/python python3 -m gigaflex.cli \
+gigaflex \
   docs/plans/20260617-add-health-check-endpoint.md \
   --jira-task PROJ-123
 ```

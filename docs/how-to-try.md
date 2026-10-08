@@ -15,9 +15,19 @@
 
 [Скачать GigaFlex с GitHub](https://github.com/RomanovAV/gigaflex/archive/refs/heads/main.zip).
 
+Установите GigaFlex один раз из корня скачанного репозитория — нужен
+[uv](https://docs.astral.sh/uv/getting-started/installation/):
+
+```bash
+uv tool install /path/to/gigaflex
+```
+
+Если команда `gigaflex` после этого не находится, выполните
+`uv tool update-shell` и откройте новый терминал.
+
 ```bash
 command -v gigacode
-PYTHONPATH=/path/to/gigaflex/python python3 -m gigaflex.cli --init
+gigaflex --init
 ```
 
 Перед первым запуском лучше выбрать небольшую задачу с понятным результатом и
@@ -29,7 +39,7 @@ PYTHONPATH=/path/to/gigaflex/python python3 -m gigaflex.cli --init
 `tasks.md` обычным OpenSpec-процессом и передайте ее целиком:
 
 ```bash
-PYTHONPATH=/path/to/gigaflex/python python3 -m gigaflex.cli \
+gigaflex \
   --openspec openspec/changes/add-dark-mode
 ```
 
@@ -79,14 +89,14 @@ GigaCode.
 Готовый implementation plan из Superpowers можно выполнить напрямую:
 
 ```bash
-PYTHONPATH=/path/to/gigaflex/python python3 -m gigaflex.cli \
+gigaflex \
   docs/superpowers/plans/2026-07-01-add-dark-mode.md
 ```
 
 Если есть только design spec, сначала установите skill-конвертер:
 
 ```bash
-PYTHONPATH=/path/to/gigaflex/python python3 -m gigaflex.cli \
+gigaflex \
   --install-superpowers-converter-skill
 ```
 
@@ -105,21 +115,21 @@ docs/superpowers/specs/2026-07-01-add-dark-mode.md into docs/plans/add-dark-mode
 Один раз установите skill планирования:
 
 ```bash
-PYTHONPATH=/path/to/gigaflex/python python3 -m gigaflex.cli \
+gigaflex \
   --install-planning-skill
 ```
 
 Создайте план из текстового запроса:
 
 ```bash
-PYTHONPATH=/path/to/gigaflex/python python3 -m gigaflex.cli \
+gigaflex \
   --plan "добавить health check endpoint"
 ```
 
 Проверьте созданный файл в `docs/plans/` и запустите его:
 
 ```bash
-PYTHONPATH=/path/to/gigaflex/python python3 -m gigaflex.cli \
+gigaflex \
   docs/plans/20260723-add-health-check-endpoint.md
 ```
 

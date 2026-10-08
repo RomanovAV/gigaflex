@@ -5,6 +5,38 @@ Python autonomous OpenSpec change and plan runner for GigaCode CLI.
 For a compact LLM-oriented project reference, see
 [`gigaflex-llms.txt`](gigaflex-llms.txt).
 
+## Installation
+
+Requires [uv](https://docs.astral.sh/uv/getting-started/installation/), Git,
+and GigaCode CLI in `PATH`. From the root of a cloned repository:
+
+```bash
+uv tool install .
+gigaflex --version
+```
+
+uv builds an isolated environment and places the `gigaflex` and
+`gigaflex-diagnose` commands in its executables directory, downloading a
+suitable Python (3.9+) when none is installed. GigaFlex has no third-party
+runtime dependencies. If the command is not found afterwards, run
+`uv tool update-shell` and open a new terminal.
+
+Install directly from Git without cloning:
+
+```bash
+uv tool install "git+https://github.com/ChistovPavel/gigaflex.git"
+```
+
+The installed copy does not follow the checkout. After pulling new commits,
+reinstall with `uv tool install --force .`, or install once with
+`uv tool install --editable .` so that source edits take effect immediately.
+For a one-off run without installing, use `uvx --from . gigaflex --help`.
+Remove the tool with `uv tool uninstall gigaflex`.
+
+The examples below call the installed `gigaflex` command from the root of the
+project being changed. From a source checkout, `uv run gigaflex` and
+`python -m gigaflex` (with `PYTHONPATH=python`) are equivalent.
+
 OpenSpec is the primary workflow: the change defines the contract, GigaFlex
 executes one `tasks.md` group at a time, and the completed change passes an
 isolated review and finalize gate before the owner archives it.
@@ -147,7 +179,7 @@ Run a standard local OpenSpec `spec-driven` change by passing its change
 directory:
 
 ```bash
-PYTHONPATH=python python3 -m gigaflex.cli \
+gigaflex \
   --openspec openspec/changes/add-dark-mode
 ```
 
@@ -219,14 +251,14 @@ prompt. Non-TTY sessions, including CI, automatically use quick mode.
 Install the bundled planning skill once:
 
 ```bash
-PYTHONPATH=python python3 -m gigaflex.cli --install-planning-skill
+gigaflex --install-planning-skill
 ```
 
 Superpowers implementation plans with `## Task N:` or `### Task N:` headings
 and step checkboxes can also be executed directly:
 
 ```bash
-PYTHONPATH=python python3 -m gigaflex.cli \
+gigaflex \
   docs/superpowers/plans/2026-07-01-demo.md
 ```
 
@@ -235,7 +267,7 @@ Superpowers design spec into a plan, or normalize a plan by removing
 Superpowers-specific execution mechanics:
 
 ```bash
-PYTHONPATH=python python3 -m gigaflex.cli --install-superpowers-converter-skill
+gigaflex --install-superpowers-converter-skill
 ```
 
 The default destination is `~/.gigacode/skills/planning/SKILL.md`. Existing
@@ -298,11 +330,11 @@ Observed GigaCode constraints:
 - GigaCode runs on Node.js, so Node warnings such as
   `MaxListenersExceededWarning` may appear in combined output.
 
-Run from this directory:
+Preview the prompts for a plan, then run it:
 
 ```bash
-PYTHONPATH=python python3 -m gigaflex.cli --dry-run ../e2e/testdata/test-plan.md
-PYTHONPATH=python python3 -m gigaflex.cli docs/plans/my-feature.md
+gigaflex --dry-run docs/plans/my-feature.md
+gigaflex docs/plans/my-feature.md
 ```
 
 To enforce corporate Jira naming for a plan run, pass `--jira-task`. For
@@ -311,16 +343,16 @@ example, this switches or creates a branch like
 commit created during the run:
 
 ```bash
-PYTHONPATH=python python3 -m gigaflex.cli docs/plans/my-feature.md \
+gigaflex docs/plans/my-feature.md \
   --jira-task PROJ-123 \
   --allow-dirty
 ```
 
 Diagnose differences between direct GigaCode and GigaFlex execution by running
-this Python module from the affected project directory:
+`gigaflex-diagnose` from the affected project directory:
 
 ```bash
-PYTHONPATH=/path/to/gigaflex/python python3 -m gigaflex.diagnose
+gigaflex-diagnose
 ```
 
 The diagnostic also launches three simultaneous captured probes and stores
@@ -333,7 +365,7 @@ and use `--review-workers 1` or `--no-parallel-review` as a temporary fallback.
 To reproduce one exact task prompt once:
 
 ```bash
-PYTHONPATH=/path/to/gigaflex/python python3 -m gigaflex.diagnose \
+gigaflex-diagnose \
   --plan docs/plans/my-feature.md
 ```
 
@@ -348,14 +380,14 @@ Run a plan in a separate git worktree, close to ralphex `--worktree`
 behavior:
 
 ```bash
-PYTHONPATH=python python3 -m gigaflex.cli --worktree docs/plans/my-feature.md
-PYTHONPATH=python python3 -m gigaflex.cli --worktree --branch=my-feature docs/plans/tasks.md
+gigaflex --worktree docs/plans/my-feature.md
+gigaflex --worktree --branch=my-feature docs/plans/tasks.md
 ```
 
 Initialize local project config:
 
 ```bash
-PYTHONPATH=python python3 -m gigaflex.cli --init
+gigaflex --init
 ```
 
 If you skip `--init`, the first real plan creation or plan execution initializes
@@ -369,13 +401,13 @@ and worktrees stay out of normal commits.
 Create editable project-specific prompt overrides only when needed:
 
 ```bash
-PYTHONPATH=python python3 -m gigaflex.cli --init-prompts
+gigaflex --init-prompts
 ```
 
 Initialize git automatically when creating or running a plan in a fresh folder:
 
 ```bash
-PYTHONPATH=python python3 -m gigaflex.cli --plan "add user authentication" --init-git
+gigaflex --plan "add user authentication" --init-git
 ```
 
 Without `--init-git`, `gigaflex` does not create a git repository for you. Plan
@@ -387,7 +419,7 @@ execution.
 Create a new executable plan:
 
 ```bash
-PYTHONPATH=python python3 -m gigaflex.cli --plan "add user authentication"
+gigaflex --plan "add user authentication"
 ```
 
 The default interactive mode requires the GigaCode `planning` skill. The skill
@@ -399,7 +431,7 @@ set `gigacode_interactive_args` while keeping a `{prompt}` placeholder.
 Create a plan without the skill or from automation:
 
 ```bash
-PYTHONPATH=python python3 -m gigaflex.cli --plan "add user authentication" --quick
+gigaflex --plan "add user authentication" --quick
 ```
 
 Generated plans are requested entirely in the same language as the `--plan`
@@ -418,14 +450,14 @@ With `--jira-task PROJ-123`, these GigaFlex-created commits become
 Run review with a different GigaCode model:
 
 ```bash
-PYTHONPATH=python python3 -m gigaflex.cli --review --review-model <model-name>
-PYTHONPATH=python python3 -m gigaflex.cli docs/plans/my-feature.md --review-model <model-name>
+gigaflex --review --review-model <model-name>
+gigaflex docs/plans/my-feature.md --review-model <model-name>
 ```
 
 Review the current `HEAD` against an explicit branch or other Git ref:
 
 ```bash
-PYTHONPATH=python python3 -m gigaflex.cli --review --base-ref develop
+gigaflex --review --base-ref develop
 ```
 
 For a plan run, GigaFlex normally captures the branch and exact `HEAD` commit
@@ -441,7 +473,7 @@ If an execution branch predates this metadata and is already checked out, pass
 Run tests:
 
 ```bash
-PYTHONPATH=python python3 -m unittest discover -s tests
+uv run python -m unittest discover -s tests
 ```
 
 Review behavior:

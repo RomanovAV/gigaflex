@@ -127,16 +127,16 @@ of embedding model names in the prompt text.
 
 ## Usage
 
-Run without installing:
+Install with `uv tool install .`, then run:
 
 ```bash
-PYTHONPATH=python python3 -m gigaflex.cli docs/plans/my-feature.md
+gigaflex docs/plans/my-feature.md
 ```
 
 Inspect prompts without invoking GigaCode:
 
 ```bash
-PYTHONPATH=python python3 -m gigaflex.cli --dry-run docs/plans/my-feature.md
+gigaflex --dry-run docs/plans/my-feature.md
 ```
 
 Configure command shape:
@@ -157,7 +157,7 @@ value is retained as a legacy explicit base override, equivalent to supplying
 Create local config:
 
 ```bash
-PYTHONPATH=python python3 -m gigaflex.cli --init
+gigaflex --init
 ```
 
 Global config and prompt templates are created automatically under
@@ -166,14 +166,14 @@ Global config and prompt templates are created automatically under
 Create local project overrides explicitly when needed:
 
 ```bash
-PYTHONPATH=python python3 -m gigaflex.cli --init-prompts
+gigaflex --init-prompts
 ```
 
 Create a new plan:
 
 ```bash
-PYTHONPATH=python python3 -m gigaflex.cli --install-planning-skill
-PYTHONPATH=python python3 -m gigaflex.cli --plan "add user authentication"
+gigaflex --install-planning-skill
+gigaflex --plan "add user authentication"
 ```
 
 With a terminal attached, plan creation invokes the installed GigaCode

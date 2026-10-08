@@ -93,6 +93,7 @@ def _run_parallel(
 
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
+        prog="gigaflex-diagnose",
         description="Compare direct GigaCode, captured subprocess, and GigaFlex executor behavior.",
     )
     parser.add_argument(

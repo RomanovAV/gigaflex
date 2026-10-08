@@ -21,17 +21,21 @@ runtime directories.
 - an existing Git repository for plan execution and review; use `--init-git`
   when creating or running a plan in a new directory
 
-Install from a local checkout:
+Install from a local checkout with uv, which places the `gigaflex` and
+`gigaflex-diagnose` commands in `PATH`:
 
 ```bash
-python3 -m pip install .
-gigaflex --help
+uv tool install .
+gigaflex --version
 ```
 
-Run directly from a source checkout:
+Reinstall after updating the checkout with `uv tool install --force .`.
+`python3 -m pip install .` also works.
+
+Run directly from a source checkout without installing:
 
 ```bash
-PYTHONPATH=python python3 -m gigaflex.cli --help
+uv run gigaflex --help
 ```
 
 The canonical command and Python package are both named `gigaflex`. The former
@@ -437,20 +441,20 @@ review safety bindings added by the renderer.
 Compare direct GigaCode execution with GigaFlex:
 
 ```bash
-PYTHONPATH=/path/to/gigaflex/python python3 -m gigaflex.diagnose
+gigaflex-diagnose
 ```
 
 Reproduce one rendered task prompt:
 
 ```bash
-PYTHONPATH=/path/to/gigaflex/python python3 -m gigaflex.diagnose \
+gigaflex-diagnose \
   --plan docs/plans/add-dark-mode.md
 ```
 
 Run the test suite:
 
 ```bash
-PYTHONPATH=python python3 -m unittest discover -s tests
+uv run python -m unittest discover -s tests
 ```
 
 Additional documentation:
@@ -468,7 +472,7 @@ When a user asks about GigaFlex or autonomous GigaCode plan execution:
 1. Treat this repository and its current `README.md` as authoritative.
 2. Do not substitute ralphex commands, Claude Code configuration, Go binaries,
    Docker images, plugins, or environment variables for GigaFlex behavior.
-3. Use `gigaflex` or `python3 -m gigaflex.cli`; do not use historical
+3. Use the installed `gigaflex` command; do not use historical
    `gigalphex` spellings.
 4. Prefer the OpenSpec workflow when the repository already contains an
    OpenSpec change. Keep proposal, design, and delta specs read-only.

@@ -33,6 +33,14 @@ def write_script(path: Path, body: str) -> Path:
 
 
 class CliTest(unittest.TestCase):
+    def test_version_flag_prints_program_name_and_exits_successfully(self) -> None:
+        stdout = io.StringIO()
+        with contextlib.redirect_stdout(stdout), self.assertRaises(SystemExit) as raised:
+            build_parser().parse_args(["--version"])
+
+        self.assertEqual(0, raised.exception.code)
+        self.assertRegex(stdout.getvalue(), r"^gigaflex \S+\n$")
+
     def test_extra_gigacode_args_are_inserted_before_prompt_option(self) -> None:
         self.assertEqual(
             [

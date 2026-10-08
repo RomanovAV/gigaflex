@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+from importlib.metadata import PackageNotFoundError, version
 import os
 from pathlib import Path
 import re
@@ -51,8 +52,21 @@ JIRA_TASK_RE = re.compile(r"^(?:[A-Za-z][A-Za-z0-9]*-\d+|\d+)$")
 BRANCH_DESCRIPTION_RE = re.compile(r"^[A-Za-z0-9._-]+$")
 
 
+def installed_version() -> str:
+    try:
+        return version("gigaflex")
+    except PackageNotFoundError:
+        # Running from a source checkout through PYTHONPATH, without installation.
+        return "unknown"
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="gigaflex")
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"%(prog)s {installed_version()}",
+    )
     parser.add_argument("plan_file", nargs="?", help="path to markdown plan file")
     parser.add_argument(
         "--openspec",

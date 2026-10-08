@@ -3,15 +3,17 @@ name = "gigaflex"
 version = "0.1.0"
 description = "Python autonomous plan runner for GigaCode CLI"
 readme = "README.md"
-license = { file = "LICENSE" }
+license = "MIT"
+license-files = ["LICENSE"]
 requires-python = ">=3.9"
 dependencies = []
 
 [project.scripts]
 gigaflex = "gigaflex.cli:main"
+gigaflex-diagnose = "gigaflex.diagnose:main"
 
 [build-system]
-requires = ["setuptools>=68"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]

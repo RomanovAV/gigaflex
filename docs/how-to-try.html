@@ -826,9 +826,12 @@
 
       function buildOutput() {
         const runner = value("runnerRoot", "/path/to/gigaflex").replace(/\/+$/, "");
-        const cli = "PYTHONPATH=" + quote(runner + "/python") + " python3 -m gigaflex.cli";
+        const cli = "gigaflex";
 
         const commands = [
+          "# Установите GigaFlex один раз (нужен uv)",
+          "uv tool install " + quote(runner),
+          "",
           "# Перейдите в проект",
           "cd " + quote(value("projectRoot", "/path/to/target-project")),
           "",

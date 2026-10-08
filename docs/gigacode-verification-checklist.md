@@ -68,7 +68,7 @@ From the repository root, not from `/tmp`:
 
 ```bash
 cd /path/to/gigaflex
-PYTHONPATH=python python3 -m unittest discover -s tests
+uv run python -m unittest discover -s tests
 ```
 
 Expected:
@@ -122,7 +122,7 @@ This checks that gigaflex can run GigaCode non-interactively.
 Run:
 
 ```bash
-PYTHONPATH=/path/to/gigaflex/python python3 -m gigaflex.cli docs/plans/20260612-smoke.md --allow-dirty --tasks-only --no-move-plan
+gigaflex docs/plans/20260612-smoke.md --allow-dirty --tasks-only --no-move-plan
 ```
 
 Expected:
@@ -181,7 +181,7 @@ The following already passed historically. Re-run only if related code changed.
 ```bash
 mkdir -p /tmp/gigaflex-init-check
 cd /tmp/gigaflex-init-check
-PYTHONPATH=/path/to/gigaflex/python python3 -m gigaflex.cli --init
+gigaflex --init
 find .gigaflex -type f | sort
 find ~/.config/gigaflex -type f | sort
 ```
@@ -204,14 +204,14 @@ The local `.gigaflex/prompts/` directory should not exist yet. Create local
 overrides explicitly:
 
 ```bash
-PYTHONPATH=/path/to/gigaflex/python python3 -m gigaflex.cli --init-prompts
+gigaflex --init-prompts
 ```
 
 ## 5. Verify `--plan --dry-run`
 
 ```bash
 cd /path/to/gigaflex
-PYTHONPATH=python python3 -m gigaflex.cli --plan "add health check endpoint" --dry-run
+gigaflex --plan "add health check endpoint" --dry-run
 ```
 
 Expected:
@@ -223,7 +223,7 @@ Expected:
 ## 6. Install the Planning Skill
 
 ```bash
-PYTHONPATH=python python3 -m gigaflex.cli --install-planning-skill
+gigaflex --install-planning-skill
 ```
 
 Expected:
@@ -236,7 +236,7 @@ Expected:
 If this GigaCode version uses another directory:
 
 ```bash
-PYTHONPATH=python python3 -m gigaflex.cli \
+gigaflex \
   --install-planning-skill \
   --skill-dir /actual/gigacode/skills/path
 ```
@@ -257,7 +257,7 @@ From the repository root:
 
 ```bash
 cd /path/to/gigaflex
-PYTHONPATH=python python3 -m gigaflex.cli --plan "add health check endpoint"
+gigaflex --plan "add health check endpoint"
 ```
 
 Expected:
@@ -290,7 +290,7 @@ Notes:
 ## 8. Verify Quick Plan Generation
 
 ```bash
-PYTHONPATH=python python3 -m gigaflex.cli --plan "add quick health check plan" --quick
+gigaflex --plan "add quick health check plan" --quick
 ```
 
 Expected:
@@ -304,7 +304,7 @@ Expected:
 Run the same command again:
 
 ```bash
-PYTHONPATH=python python3 -m gigaflex.cli --plan "add health check endpoint"
+gigaflex --plan "add health check endpoint"
 ```
 
 Expected:
@@ -325,9 +325,9 @@ From the repository root:
 
 ```bash
 cd /path/to/gigaflex
-PYTHONPATH=python python3 -m gigaflex.cli --init-prompts
+gigaflex --init-prompts
 printf 'CUSTOM PLAN PROMPT: {plan_request}\n' > .gigaflex/prompts/make_plan.txt
-PYTHONPATH=python python3 -m gigaflex.cli --plan "demo request" --quick --dry-run
+gigaflex --plan "demo request" --quick --dry-run
 ```
 
 Expected:
@@ -347,7 +347,7 @@ Create a minimal local change containing `proposal.md`, `tasks.md`, and one
 delta spec, then run:
 
 ```bash
-PYTHONPATH=/path/to/gigaflex/python python3 -m gigaflex.cli \
+gigaflex \
   --openspec openspec/changes/approval-smoke \
   --tasks-only
 ```
