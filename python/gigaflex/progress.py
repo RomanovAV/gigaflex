@@ -3,7 +3,9 @@ from __future__ import annotations
 from datetime import datetime
 import os
 from pathlib import Path
+import shutil
 import threading
+from typing import Callable, Optional
 import uuid
 
 
@@ -17,6 +19,8 @@ class ProgressLog:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._lock = threading.Lock()
         self._run_start_offset = path.stat().st_size if path.exists() else 0
+        self._archive_file: Optional[Path] = None
+        self.event_callback: Optional[Callable[..., None]] = None
         self.run_id = (
             datetime.now().strftime("%Y%m%d-%H%M%S")
             + f"-{os.getpid()}-{uuid.uuid4().hex[:8]}"
@@ -26,6 +30,23 @@ class ProgressLog:
         with self._lock:
             with self.path.open("a", encoding="utf-8") as fh:
                 fh.write(text)
+            if self._archive_file is not None:
+                with self._archive_file.open("a", encoding="utf-8") as fh:
+                    fh.write(text)
+
+    def archive_to(self, path: Path) -> None:
+        """Mirror this invocation only; retain the existing live progress log."""
+        with self._lock:
+            with path.open("xb") as target:
+                if self.path.exists():
+                    with self.path.open("rb") as source:
+                        source.seek(self._run_start_offset)
+                        shutil.copyfileobj(source, target)
+            self._archive_file = path
+
+    def event(self, kind: str, **data: object) -> None:
+        if self.event_callback is not None:
+            self.event_callback(kind, **data)
 
     def section(self, title: str) -> None:
         stamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")

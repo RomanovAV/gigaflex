@@ -166,6 +166,7 @@ class Runner:
                     self._pending_task_recovery = dict(recovery)
             elif self.checkpoint is not None:
                 self.checkpoint.clear_blocked()
+        self.log.event("execution_started", resume=self.options.resume)
         if not self.options.review_only:
             had_uncompleted_work = self._has_uncompleted_work()
             if self.checkpoint is not None and had_uncompleted_work:
@@ -235,6 +236,7 @@ class Runner:
         self._assert_state(self._reviewed_state, "completed result")
         report = {"repository": asdict(self._reviewed_state) if self._reviewed_state else None,
                   "review": "passed", "finalize": "passed" if self.options.finalize_enabled else "disabled"}
+        self.log.event("verification", **report)
         self.log.diagnostic("session=verification report=" + json.dumps(report))
         if self.dashboard is not None:
             self.dashboard.result_verified(report)
@@ -245,6 +247,8 @@ class Runner:
         return self._reviewed_state
 
     def _log_checkpoint_reuse(self, phase: str) -> None:
+        self.log.event("phase_reused", phase=phase,
+                       history=self.checkpoint.phase_history(phase) if self.checkpoint else None)
         self.log.section(f"{phase} checkpoint")
         self.log.write(
             f"reused successful {phase} result for unchanged HEAD and working tree\n"
@@ -276,6 +280,8 @@ class Runner:
             if selected_task is None:
                 return
             task_label = self._task_label(selected_task)
+            self.log.event("task_started", number=selected_task.number, title=selected_task.title,
+                           iteration=iteration, head=self._git().head_commit())
             if self.dashboard is not None:
                 self.dashboard.task_started(
                     selected_task.number,
@@ -308,6 +314,8 @@ class Runner:
                     self._pending_task_recovery = None
                     if self.checkpoint is not None:
                         self.checkpoint.clear_blocked()
+            self.log.event("task_completed", number=selected_task.number, title=selected_task.title,
+                           iteration=iteration, head=self._git().head_commit())
             if self.dashboard is not None:
                 self.dashboard.task_finished()
             if result.signal == ALL_TASKS_DONE and not self._has_uncompleted_work():
@@ -379,6 +387,7 @@ class Runner:
             )
         ):
             completion_retries += 1
+            self.log.event("completion_retry", phase="task", task=task_label, attempt=completion_retries)
             status = self._task_completion_status(
                 selected_task, plan_before, context_before, head_before, dirty_before,
             )
@@ -449,6 +458,8 @@ class Runner:
                 break
             if attempt == max(0, self.options.task_completion_retries):
                 raise RuntimeError("task runner validation failed: " + "; ".join(errors))
+            self.log.event("completion_retry", phase="task_validation", task=task_label,
+                           attempt=attempt + 1, errors=errors)
             current = self._matching_task(self._parse_plan_file(), selected_task)
             result = self._run_task_agent(render_task_completion_retry_prompt(
                 prompt, self.options.plan_file, selected_task.number, selected_task.title,
@@ -531,6 +542,8 @@ class Runner:
             if check_errors:
                 findings["runner_validation"] = self._validation_finding(check_errors)
             identified = identify_review_findings(findings)
+            self.log.event("review_findings", iteration=iteration, repository=asdict(reviewed_before) if reviewed_before else None,
+                           findings=[asdict(item) for item in identified])
             if not identified:
                 self._reviewed_state = reviewed_before
                 self.log.diagnostic(
@@ -648,6 +661,8 @@ class Runner:
             if check_errors:
                 findings["runner_validation"] = self._validation_finding(check_errors)
             identified = identify_review_findings(findings)
+            self.log.event("review_findings", iteration=iteration, repository=asdict(reviewed_before) if reviewed_before else None,
+                           findings=[asdict(item) for item in identified])
             if not identified:
                 self._reviewed_state = reviewed_before
                 self.log.diagnostic(
@@ -722,6 +737,8 @@ class Runner:
         terminal_verification: bool,
     ) -> None:
         mode = "initial" if scope is None else "followup"
+        self.log.event("review_pass", iteration=iteration, repair_count=repair_count,
+                       mode=mode, terminal_verification=terminal_verification)
         self.log.diagnostic(
             "session=review event=attempt_scope "
             f"iteration={iteration} mode={mode} repair_count={repair_count} "
@@ -840,6 +857,7 @@ class Runner:
     def _run_checks(self, phase: str) -> list[str]:
         commands = [command for command in self.options.validation_commands if phase in command.phases]
         if not commands:
+            self.log.event("validation", phase=phase, status="not_configured", checks=[])
             self.log.diagnostic(f"session=validation phase={phase} status=not_configured evidence=agent_report_and_repository_checks")
             if self.dashboard is not None:
                 self.dashboard.validation_finished({"phase": phase, "status": "not_configured", "checks": []})
@@ -858,6 +876,7 @@ class Runner:
         self._assert_state(expected, "runner validation")
         report = {"phase": phase, "repository": asdict(expected) if expected else None, "checks": results,
                   "status": "passed" if all(item["status"] == "passed" for item in results) else "failed"}
+        self.log.event("validation", **report)
         self.log.diagnostic("session=validation report=" + json.dumps(report, ensure_ascii=False))
         if self.dashboard is not None:
             self.dashboard.validation_finished(report)
@@ -936,6 +955,7 @@ class Runner:
         errors = []
         for attempt in range(max(0, self.options.task_completion_retries) + 1):
             if errors:
+                self.log.event("completion_retry", phase="synthesis", attempt=attempt, errors=errors)
                 self._restore_phase_contract(protected)
             correction = "\n\nCorrect this same candidate and return a complete finding ledger. " \
                          "Validate and commit required deliverables; remove only verified disposable outputs. " \
@@ -996,6 +1016,8 @@ class Runner:
             return
         retries = max(0, self.options.task_completion_retries)
         for attempt in range(retries + 1):
+            if attempt:
+                self.log.event("completion_retry", phase="finalize", attempt=attempt)
             if self.dashboard is not None:
                 self.dashboard.phase_started("finalize", "Verifying the reviewed result")
             self.log.section("finalize")
@@ -1974,6 +1996,11 @@ class Runner:
             )
 
         decision_records = build_review_decision_records(identified, decisions)
+        self.log.event("review_decisions", source="agent_report",
+                       findings=[asdict(item) for item in identified],
+                       decisions=[asdict(item) for item in decisions],
+                       records=[asdict(item) for item in decision_records],
+                       head=self._git().head_commit())
         self._latest_review_verification_records = tuple(
             record
             for record in decision_records

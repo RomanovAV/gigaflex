@@ -27,6 +27,8 @@ This is a small standalone rewrite of the useful ralphex core:
   current-run snapshot, and generate a live local dashboard
 - persist successful phase checkpoints and resume interrupted runs without
   repeating review or finalize when HEAD and the working tree are unchanged
+- retain versioned inputs and structured results for every execution attempt,
+  linking resumed attempts to the same logical run
 - detect gigaflex completion signals
 - run review and a default finalize pass
 - run five specialist review agents in parallel in disposable detached
@@ -86,6 +88,24 @@ the current review status and pass history, parallel review sessions, executor
 retries, failures, elapsed time, and known token usage. The JSON file exposes
 the same state for future integrations. The full
 agent transcript and executor diagnostics remain in `progress-my-feature.txt`.
+
+Every non-dry-run plan execution and review also retains an independent history
+under the repository's common Git directory:
+
+```text
+.git/gigaflex/runs/<run_id>/<attempt_id>/
+```
+
+The CLI prints the history directory and final `result.json` path. Each attempt
+stores its input plan/context, effective GigaFlex settings and prompt contents
+with SHA-256 hashes, initial/final Git state, its own transcript, structured
+events, statistics, dashboard state, and checkpoint. `result.json` includes all
+runner validation attempts, parsed review findings and decisions, retries,
+failure details, and artifact links. Subsequent executions do not overwrite
+these files. `--resume` creates a new `attempt_id` under the original `run_id`
+and records `parent_attempt_id`; `--restart` begins a new logical run.
+See [run history and result schema](docs/run-history.md) for aggregation rules,
+unknown fields, and interrupted-attempt handling.
 
 Prompts do not point agents at that append-only historical transcript. GigaFlex
 refreshes `context-my-feature.txt` with at most the last 200 lines/50,000

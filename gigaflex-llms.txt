@@ -5,6 +5,13 @@ executes one task group per fresh GigaCode session, requires a verifiable task
 commit, runs isolated review passes, synthesizes confirmed findings, and
 performs a final validation pass.
 
+Execution/review history is retained under the common Git directory at
+`gigaflex/runs/<run_id>/<attempt_id>/`. Each attempt saves input versions,
+prompt contents, effective settings, its own transcript/events, and a structured
+`result.json`. Resume shares the logical `run_id` and links a new `attempt_id`
+to its parent; restart creates a new logical run. Missing terminal results mean
+unknown completion. See `docs/run-history.md` for the schema and unknown fields.
+
 **GitHub:** https://github.com/RomanovAV/gigaflex
 
 GigaFlex is a standalone Python project inspired by the useful orchestration

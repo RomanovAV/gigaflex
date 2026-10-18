@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 import threading
 import time
-from typing import Optional
+from typing import Callable, Optional
 
 
 @dataclass(frozen=True)
@@ -39,10 +39,13 @@ class RunStatistics:
         self._failure_phase = ""
         self._invocations: list[InvocationStat] = []
         self._lock = threading.Lock()
+        self.on_invocation: Optional[Callable[[InvocationStat], None]] = None
 
     def add(self, invocation: InvocationStat) -> None:
         with self._lock:
             self._invocations.append(invocation)
+        if self.on_invocation is not None:
+            self.on_invocation(invocation)
 
     def finish(
         self,

@@ -44,6 +44,7 @@ from .skills import (
     planning_skill_path,
 )
 from .stats import RunStatistics, statistics_path
+from .history import RunHistory, capture_inputs, capture_repository, history_root
 from .archive import archive_plan
 
 
@@ -990,15 +991,15 @@ def main(argv: Optional[list[str]] = None) -> int:
     )
     if review_worktrees is not None:
         review_worktrees.ignored_paths = orchestration_paths
+    checkpoint = None
+    checkpoint_error = None
     try:
         checkpoint = make_checkpoint(
             args, checkpoint_file, git, plan_source, run_baseline, orchestration_paths, log,
             artifact_paths=cfg.task_artifact_paths,
         )
     except ResumeError as exc:
-        print(f"error: {exc}", file=sys.stderr)
-        dashboard.fail(str(exc))
-        return 1
+        checkpoint_error = exc
     resume_command = continuation_command(
         launch_directory, launch_arguments, run_baseline.base_commit if run_baseline else "",
     )
@@ -1007,7 +1008,33 @@ def main(argv: Optional[list[str]] = None) -> int:
     run_status = "success"
     failure_reason = ""
     failure_phase = ""
+    history = None
     try:
+        if not args.dry_run:
+            history = RunHistory(
+                history_root(git), attempt_id=log.run_id,
+                identity=run_identity(plan_source, git), base_commit=cfg.default_branch,
+                mode="resume" if args.resume else "restart" if args.restart else "new",
+                parent=checkpoint.blocked.get("history") if args.resume and checkpoint else None,
+            )
+            log.archive_to(history.path / "progress.txt")
+            log.event_callback = history.record
+            statistics.on_invocation = history.invocation
+            if checkpoint is not None:
+                checkpoint.history_reference = history.reference
+
+            def executor_event(session, event, fields):
+                history.executor_event(session, event, fields)
+                dashboard.executor_event(session, event, fields)
+
+            for executor in (task_executor, synthesis_executor, review_agent_executor, finalize_executor):
+                executor.event_callback = executor_event
+            inputs = capture_inputs(cfg, options, git, orchestration_paths)
+            inputs["continuation"] = checkpoint.snapshot if checkpoint is not None else None
+            history.save_inputs(inputs)
+            print(f"run history: {history.path}")
+        if checkpoint_error is not None:
+            raise checkpoint_error
         stopped_recovery = checkpoint.blocked.get("task_recovery") if checkpoint is not None else None
         archive_recovery = stopped_recovery if stopped_recovery and stopped_recovery.get("phase") == "archive" else None
         if archive_recovery and (not args.resume or not cfg.move_plan_on_completion or args.tasks_only or args.review):
@@ -1026,6 +1053,8 @@ def main(argv: Optional[list[str]] = None) -> int:
         )
         if archive_recovery is None:
             runner.run()
+        else:
+            log.event("execution_started", resume=args.resume, phase="archive")
         if (
             not args.dry_run
             and cfg.move_plan_on_completion
@@ -1069,7 +1098,8 @@ def main(argv: Optional[list[str]] = None) -> int:
             log.write(
                 f"phase: {failure_phase}\nreason: {failure_reason}\n"
             )
-            record_stopped_run(checkpoint, exc, failure_phase, resume_command, log, dashboard, interrupted=True)
+            record_stopped_run(checkpoint, exc, failure_phase, resume_command, log, dashboard,
+                               interrupted=True, history=history)
     except ResumeError as exc:
         print(f"error: {exc}", file=sys.stderr)
         exit_code = 1
@@ -1100,7 +1130,7 @@ def main(argv: Optional[list[str]] = None) -> int:
                 "session=runner event=failed "
                 f"phase={failure_phase!r} error={failure_reason!r}"
             )
-            record_stopped_run(checkpoint, exc, failure_phase, resume_command, log, dashboard)
+            record_stopped_run(checkpoint, exc, failure_phase, resume_command, log, dashboard, history=history)
     finally:
         if not args.dry_run:
             statistics.finish(
@@ -1114,6 +1144,24 @@ def main(argv: Optional[list[str]] = None) -> int:
             log.write(report)
             print(report, end="")
             print(f"statistics: {stats_file}")
+            if history is not None:
+                try:
+                    try:
+                        final_repository = capture_repository(git, orchestration_paths, cfg.task_artifact_paths)
+                    except Exception as state_error:
+                        final_repository = {"status": "unavailable", "reason": str(state_error)}
+                    history.finish(
+                        statistics=statistics, dashboard=dashboard.state, repository=final_repository,
+                        checkpoint=checkpoint.snapshot if checkpoint else None, exit_code=exit_code,
+                        artifact_paths={
+                            "live_progress": str(progress_file.resolve()),
+                            "recovery": str(dashboard.state.get("recovery_path", "")),
+                        },
+                    )
+                    print(f"run result: {history.path / 'result.json'}")
+                except Exception as history_error:
+                    print(f"could not finish run history: {history_error}; inspect {history.path}", file=sys.stderr)
+                    exit_code = exit_code or 1
 
     if exit_code:
         return exit_code
@@ -1121,13 +1169,17 @@ def main(argv: Optional[list[str]] = None) -> int:
     return 0
 
 
+def run_identity(plan_source, git):
+    return (f"{plan_source.kind}:{plan_source.source_path.resolve()}"
+            if plan_source is not None else f"review:{git.current_branch()}")
+
+
 def make_checkpoint(args, path, git, plan_source, baseline, ignored_paths, log, *, artifact_paths=()):
     if args.dry_run:
         return None
     return RunCheckpoint(
         path, git,
-        identity=(f"{plan_source.kind}:{plan_source.source_path.resolve()}"
-                  if plan_source is not None else f"review:{git.current_branch()}"),
+        identity=run_identity(plan_source, git),
         base_commit=baseline.base_commit if baseline is not None else "",
         ignored_paths=ignored_paths, diagnostic=log.diagnostic,
         artifact_paths=artifact_paths,
@@ -1152,14 +1204,15 @@ def continuation_command(directory: Path, arguments: list[str], base_commit: str
     return f"cd {shlex.quote(str(directory))} && {shlex.join(['gigaflex', *filtered, '--resume'])}"
 
 
-def record_stopped_run(checkpoint, exc, phase, command, log, dashboard, *, interrupted=False):
+def record_stopped_run(checkpoint, exc, phase, command, log, dashboard, *, interrupted=False, history=None):
     recovery = getattr(exc, "task_recovery", None)
     reason = str(exc) or "run interrupted"
     if recovery and recovery.get("original_dirty_paths") and "--allow-dirty" not in shlex.split(command):
         command += " --allow-dirty"
     try:
         if checkpoint is not None:
-            checkpoint.mark_blocked(reason, phase, command, recovery)
+            checkpoint.mark_blocked(reason, phase, command, recovery,
+                                    history=history.reference if history is not None else None)
     except OSError as save_error:
         print(f"could not save continuation state: {save_error}; inspect the saved task work manually", file=sys.stderr)
         command = ""

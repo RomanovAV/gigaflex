@@ -46,6 +46,7 @@ class RunCheckpoint:
         self.ignored_paths = ignored_paths
         self.artifact_paths = artifact_paths
         self.diagnostic = diagnostic
+        self.history_reference: dict[str, str] | None = None
         self._data = self._load()
         if restart:
             stopped_phase = self.blocked.get("phase")
@@ -61,6 +62,10 @@ class RunCheckpoint:
             self._write()
 
     @property
+    def snapshot(self) -> dict[str, object]:
+        return json.loads(json.dumps(self._data))
+
+    @property
     def blocked(self) -> dict[str, object]:
         value = self._data.get("blocked")
         return dict(value) if isinstance(value, dict) else {}
@@ -68,12 +73,15 @@ class RunCheckpoint:
     def mark_blocked(
         self, reason: str, phase: str, resume_command: str,
         task_recovery: dict[str, object] | None = None,
+        *, history: dict[str, str] | None = None,
     ) -> None:
         recovery = task_recovery or self.blocked.get("task_recovery")
         self._data["blocked"] = {
             "reason": reason, "phase": phase, "resume_command": resume_command,
             "task_recovery": recovery, "updated_at": _timestamp(),
         }
+        if history is not None:
+            self._data["blocked"]["history"] = history
         self._write()
 
     def clear_blocked(self) -> None:
@@ -118,6 +126,7 @@ class RunCheckpoint:
         phases[phase] = {
             **asdict(state),
             "completed_at": _timestamp(),
+            "history": self.history_reference,
         }
         for later in PHASE_ORDER[PHASE_ORDER.index(phase) + 1:]:
             phases.pop(later, None)
@@ -136,6 +145,10 @@ class RunCheckpoint:
         self._data["updated_at"] = _timestamp()
         self._write()
         self._report(f"session=checkpoint event=invalidated_from phase={phase}")
+
+    def phase_history(self, phase: str) -> object:
+        record = self._phases().get(phase, {})
+        return record.get("history") if isinstance(record, dict) else None
 
     def _load(self) -> dict[str, object]:
         if not self.path.exists():
