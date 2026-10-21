@@ -320,6 +320,7 @@ class TaskResumeTest(TaskRepositoryCase):
                 '--gigacode-command', 'unused-gigacode']
         stdout, stderr = io.StringIO(), io.StringIO()
         with (patch.dict(os.environ, {'HOME': str(self.root / 'home')}),
+              patch('gigaflex.cli.webbrowser.open_new_tab', return_value=True),
               patch('gigaflex.cli.GigaCodeExecutor.run', side_effect=execute),
               contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr)):
             self.assertEqual(1, main(args))

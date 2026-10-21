@@ -7,6 +7,7 @@ import re
 import shlex
 import sys
 from typing import Optional
+import webbrowser
 
 from .config import (
     init_global_config,
@@ -181,6 +182,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="use one read-only reviewer before synthesis instead of parallel agents",
     )
     parser.add_argument("--dry-run", action="store_true", help="print prompts instead of invoking gigacode")
+    parser.add_argument(
+        "--no-open-dashboard",
+        action="store_true",
+        help="do not automatically open the execution dashboard in a browser",
+    )
     return parser
 
 
@@ -826,6 +832,13 @@ def main(argv: Optional[list[str]] = None) -> int:
     if not args.dry_run:
         dashboard.start()
         print(f"dashboard: {dashboard_html.resolve()}")
+        if not args.no_open_dashboard:
+            try:
+                opened = webbrowser.open_new_tab(dashboard_html.resolve().as_uri())
+            except (webbrowser.Error, OSError):
+                opened = False
+            if not opened:
+                print("warning: could not open dashboard in browser; open the path above manually", file=sys.stderr)
     statistics = RunStatistics()
     stats_file = statistics_path(progress_file).resolve()
     checkpoint_file = checkpoint_path(progress_file).resolve()

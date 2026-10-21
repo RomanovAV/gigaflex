@@ -81,8 +81,11 @@ progress log:
 .gigaflex/progress/status-my-feature.html
 ```
 
-The CLI prints the absolute dashboard path when the run starts. Open the HTML
-file in any browser; it is self-contained, needs no HTTP server, and refreshes
+The CLI opens the dashboard in your default browser when the run starts and
+prints its absolute path. Use `--no-open-dashboard` to disable automatic opening
+(for example, on a server or in CI). If no browser is available, the run continues
+and you can open the printed path manually. `--dry-run` does not open a browser.
+The HTML file is self-contained, needs no HTTP server, and refreshes
 while the run is active. It shows task checklist progress, the current phase,
 the current review status and pass history, parallel review sessions, executor
 retries, failures, elapsed time, and known token usage. The JSON file exposes

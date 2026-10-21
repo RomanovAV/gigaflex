@@ -310,7 +310,10 @@ stats-<run>.json
 ```
 
 The text file contains the detailed transcript and sanitized executor
-diagnostics. The self-contained HTML dashboard refreshes locally and shows task
+diagnostics. The CLI automatically opens the HTML dashboard in the default
+browser and prints its absolute path. Use `--no-open-dashboard` to opt out;
+`--dry-run` never opens it. A missing browser does not stop execution.
+The self-contained HTML dashboard refreshes locally and shows task
 progress, phases, review attempts, active sessions, retries, failures, elapsed
 time, and known token usage. The JSON dashboard exposes the same state for
 integrations. The statistics report records calls, models, timing, retries,

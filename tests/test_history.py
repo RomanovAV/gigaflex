@@ -36,6 +36,7 @@ class HistoryTest(TaskRepositoryCase):
             args.append("--tasks-only")
         args.extend(extra)
         with (patch.dict(os.environ, {"HOME": str(self.root / "home")}),
+              patch("gigaflex.cli.webbrowser.open_new_tab", return_value=True),
               patch("gigaflex.cli.GigaCodeExecutor.run", side_effect=execute),
               contextlib.redirect_stdout(output), contextlib.redirect_stderr(errors)):
             code = main(args)

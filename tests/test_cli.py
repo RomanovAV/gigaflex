@@ -33,6 +33,11 @@ def write_script(path: Path, body: str) -> Path:
 
 
 class CliTest(unittest.TestCase):
+    def setUp(self) -> None:
+        browser_patch = patch("gigaflex.cli.webbrowser.open_new_tab", return_value=True)
+        self.browser_open = browser_patch.start()
+        self.addCleanup(browser_patch.stop)
+
     def test_extra_gigacode_args_are_inserted_before_prompt_option(self) -> None:
         self.assertEqual(
             [
@@ -228,6 +233,7 @@ class CliTest(unittest.TestCase):
 
             self.assertEqual(0, code)
             self.assertIn("Selected task identity: 1: Demonstrate", stdout.getvalue())
+            self.browser_open.assert_not_called()
 
     def test_completed_openspec_change_is_not_moved_and_prints_archive_hint(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -1460,6 +1466,7 @@ print(json.dumps({
             self.assertEqual("success", dashboard_state["status"])
             self.assertEqual(105, dashboard_state["usage"]["total_tokens"])
             self.assertTrue(dashboard_file.is_file())
+            self.browser_open.assert_called_once_with(dashboard_file.as_uri())
 
     def test_interrupted_run_writes_statistics_file_with_absolute_path(self) -> None:
         recovery_notice = 'task recovery saved to: /tmp/recovery-test (see README.txt)'
