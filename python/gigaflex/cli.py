@@ -21,6 +21,7 @@ from .dashboard import ProgressDashboard, dashboard_paths
 from .executor import GigaCodeExecutor
 from .git import (
     BranchBaseline,
+    DirtyWorkingTreeError,
     GitError,
     GitService,
     ReviewWorktreeManager,
@@ -45,6 +46,8 @@ from .skills import (
     planning_skill_path,
 )
 from .stats import RunStatistics, statistics_path
+from .interaction import StoppedRun, parse_continuation, recovery_choice, startup_choice, choose_review_base
+from .terminal import Choice, ask, interactive_available, _display
 from .history import RunHistory, capture_inputs, capture_repository, history_root
 from .archive import archive_plan
 
@@ -292,6 +295,14 @@ def select_run_baseline(
         and execution_branch_exists
         and git.current_branch() == execution_branch
     ):
+        if interactive_available():
+            reference = choose_review_base(git)
+            if reference is None:
+                raise KeyboardInterrupt
+            baseline = BranchBaseline(base_branch=reference, base_commit=git.resolve_commit(reference))
+            if execution_branch:
+                git.set_branch_baseline(execution_branch, baseline)
+            return baseline
         branch_detail = f" for branch {execution_branch}" if execution_branch else ""
         raise GitError(
             "no GigaFlex review base is stored"
@@ -377,6 +388,41 @@ def find_interactively_created_plan(
 
 
 def main(argv: Optional[list[str]] = None) -> int:
+    arguments = list(sys.argv[1:] if argv is None else argv)
+    directory = Path.cwd()
+    menu_mode = not arguments and interactive_available()
+    last_code = 0
+    try:
+        while True:
+            if menu_mode and not arguments:
+                cfg = load_config()
+                launch = startup_choice(directory, cfg.progress_dir)
+                if launch is None:
+                    return last_code
+                os.chdir(launch.directory)
+                arguments = list(launch.arguments)
+            result = _main_once(arguments)
+            if isinstance(result, StoppedRun):
+                launch = recovery_choice(result) if interactive_available() else None
+                if launch is None:
+                    return result.exit_code
+                os.chdir(launch.directory)
+                arguments = list(launch.arguments)
+                continue
+            last_code = result
+            if not menu_mode or result == 130:
+                return result
+            os.chdir(directory)
+            arguments = []
+    except KeyboardInterrupt:
+        print('\nОтменено.', file=sys.stderr)
+        return 130
+    except (OSError, ValueError) as error:
+        print(f'error: {error}', file=sys.stderr)
+        return 1
+
+
+def _main_once(argv: Optional[list[str]] = None):
     launch_directory = Path.cwd()
     launch_arguments = list(sys.argv[1:] if argv is None else argv)
     local_fallback_written: list[Path] = []
@@ -470,13 +516,23 @@ def main(argv: Optional[list[str]] = None) -> int:
             planning_cfg.gigacode_skills_dir = args.skill_dir.expanduser()
         if not planning_skill_installed(planning_cfg.gigacode_skills_dir):
             expected_skill = planning_skill_path(planning_cfg.gigacode_skills_dir)
-            print(f"error: GigaCode planning skill not found: {expected_skill}", file=sys.stderr)
-            install_command = "gigaflex --install-planning-skill"
-            if args.skill_dir:
-                install_command += f" --skill-dir {planning_cfg.gigacode_skills_dir}"
-            print(f"install it with: {install_command}", file=sys.stderr)
-            print("or use --quick for non-interactive plan creation", file=sys.stderr)
-            return 2
+            if interactive_available():
+                choice = ask('Planning skill не установлен. Как создать план?', [
+                    Choice('quick', 'Создать план стандартным способом', 'Дополнительный skill не требуется.'),
+                    Choice('cancel', 'Отмена'),
+                ])
+                if choice != 'quick':
+                    return 130
+                args.quick = True
+                launch_arguments.append('--quick')
+            else:
+                print(f"error: GigaCode planning skill not found: {expected_skill}", file=sys.stderr)
+                install_command = "gigaflex --install-planning-skill"
+                if args.skill_dir:
+                    install_command += f" --skill-dir {planning_cfg.gigacode_skills_dir}"
+                print(f"install it with: {install_command}", file=sys.stderr)
+                print("or use --quick for non-interactive plan creation", file=sys.stderr)
+                return 2
 
     auto_init_written = local_fallback_written.copy()
     auto_init_started_clean = local_fallback_started_clean
@@ -762,8 +818,25 @@ def main(argv: Optional[list[str]] = None) -> int:
                     git.set_branch_baseline(starting_branch, run_baseline)
             elif execution_branch and git.branch_exists(execution_branch):
                 ensure_baseline_is_ancestor(git, run_baseline, execution_branch)
-            ignored_dirty_paths = auto_init_written if auto_init_started_clean else []
-            git.ensure_clean(cfg.allow_dirty, ignored_dirty_paths)
+            ignored_dirty_paths = list(auto_init_written if auto_init_started_clean else [])
+            if args.resume and plan_source is not None and plan_source.is_openspec:
+                # Resume validates these against its saved baseline before any agent runs.
+                ignored_dirty_paths.extend(path.resolve().relative_to(git.repo_root())
+                                           for path in plan_source.context_paths)
+            try:
+                git.ensure_clean(cfg.allow_dirty, ignored_dirty_paths)
+            except DirtyWorkingTreeError:
+                if not interactive_available():
+                    raise
+                choice = ask('В проекте есть незакоммиченные изменения. Как продолжить?', [
+                    Choice('continue', 'Продолжить с текущими изменениями',
+                           'Изменения в файлах, затронутых задачей, могут войти в её коммиты.'),
+                    Choice('cancel', 'Отмена — сначала разберусь с изменениями'),
+                ], default='cancel')
+                if choice != 'continue':
+                    return 130
+                cfg.allow_dirty = True
+                launch_arguments.append('--allow-dirty')
             if cfg.worktree and plan_source is not None and not args.review:
                 assert plan_identity_path is not None
                 branch = execution_branch
@@ -1066,6 +1139,8 @@ def main(argv: Optional[list[str]] = None) -> int:
         )
         if archive_recovery is None:
             runner.run()
+            if runner.advisory_report is not None:
+                print(f"non-blocking context advisories: {runner.advisory_report}")
         else:
             log.event("execution_started", resume=args.resume, phase="archive")
         if (
@@ -1114,7 +1189,7 @@ def main(argv: Optional[list[str]] = None) -> int:
             record_stopped_run(checkpoint, exc, failure_phase, resume_command, log, dashboard,
                                interrupted=True, history=history)
     except ResumeError as exc:
-        print(f"error: {exc}", file=sys.stderr)
+        print('error: ' + (_display(str(exc), 700) if interactive_available() else str(exc)), file=sys.stderr)
         exit_code = 1
         run_status = "blocked" if checkpoint is not None and checkpoint.blocked else "failed"
         failure_reason = str(exc)
@@ -1128,7 +1203,7 @@ def main(argv: Optional[list[str]] = None) -> int:
             else:
                 dashboard.fail(str(exc))
     except Exception as exc:
-        print(f"error: {exc}", file=sys.stderr)
+        print('error: ' + (_display(str(exc), 700) if interactive_available() else str(exc)), file=sys.stderr)
         exit_code = 1
         run_status = "blocked"
         failure_reason = str(exc)
@@ -1155,7 +1230,11 @@ def main(argv: Optional[list[str]] = None) -> int:
             statistics.write_json(stats_file)
             log.section("run statistics")
             log.write(report)
-            print(report, end="")
+            if interactive_available():
+                print(f"Статус: {statistics.status} · Время: {statistics.wall_duration_ms // 1000} с "
+                      f"· Вызовов GigaCode: {len(statistics.invocations)}")
+            else:
+                print(report, end="")
             print(f"statistics: {stats_file}")
             if history is not None:
                 try:
@@ -1177,6 +1256,13 @@ def main(argv: Optional[list[str]] = None) -> int:
                     exit_code = exit_code or 1
 
     if exit_code:
+        stopped = checkpoint.blocked if checkpoint is not None else {}
+        launch = parse_continuation(stopped.get('resume_command', ''))
+        if exit_code != 130 and run_status == 'blocked' and launch is not None:
+            recovery = stopped.get('task_recovery') or {}
+            return StoppedRun(exit_code, launch, failure_reason,
+                              str(recovery.get('directory') or recovery.get('original_worktree') or ''),
+                              str(progress_file.resolve()), bool(recovery.get('phase_context', {}).get('no_progress')))
         return exit_code
     print(f"progress log: {progress_file}")
     return 0
@@ -1239,9 +1325,19 @@ def record_stopped_run(checkpoint, exc, phase, command, log, dashboard, *, inter
     if command:
         lines.extend(("Resolve the reported cause, then continue with saved work:", command,
                       'Optional context: add --resume-note "what you resolved or clarified"'))
+        if recovery and "--openspec" in shlex.split(command):
+            lines.append("Edits limited to existing OpenSpec proposal/design/spec context are detected "
+                         "automatically by --resume; saved work is preserved and revalidated. "
+                         "Checklist and implementation changes require separate reconciliation.")
     lines.extend((f"Dashboard: {dashboard.html_path.resolve()}", f"Progress log: {log.path.resolve()}"))
     notice = "\n".join(lines) + "\n"
-    print(notice, end="", file=sys.stderr)
+    if interactive_available():
+        print('Нужно ваше действие. Работа сохранена.' if location else 'Нужно ваше действие.', file=sys.stderr)
+        if location:
+            print('Сохранённая работа: ' + _display(location, 500), file=sys.stderr)
+        print('Подробный лог: ' + _display(str(log.path.resolve()), 500), file=sys.stderr)
+    else:
+        print(notice, end="", file=sys.stderr)
     log.write(notice)
 
 

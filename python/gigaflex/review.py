@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import hashlib
 from html import escape
 from pathlib import PurePosixPath
@@ -21,7 +21,7 @@ SYNTHESIS_DECISION_OPEN_RE = re.compile(r"<SYNTHESIS_DECISION>")
 SYNTHESIS_DECISION_CLOSE_RE = re.compile(r"</SYNTHESIS_DECISION>")
 FIELD_RE = re.compile(r"^([a-z_]+):[ \t]*(.*)$")
 ALLOWED_SEVERITIES = {"blocker", "major", "minor"}
-ALLOWED_SYNTHESIS_DECISIONS = {"confirmed", "rejected", "fixed", "blocked"}
+ALLOWED_SYNTHESIS_DECISIONS = {"confirmed", "rejected", "fixed", "blocked", "advisory"}
 BLOCKED_CONTRADICTION_PHRASES = (
     "already correct",
     "already fixed",
@@ -89,6 +89,7 @@ class IdentifiedReviewFinding:
     finding_id: str
     agent: str
     finding: ReviewFinding
+    agents: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -194,17 +195,30 @@ def recover_review_output(text: str) -> str:
 
 def identify_review_findings(outputs: dict[str, str]) -> list[IdentifiedReviewFinding]:
     identified: list[IdentifiedReviewFinding] = []
+    positions: dict[tuple[str, ...], int] = {}
     for agent, output in outputs.items():
         try:
             findings = parse_review_output(output)
         except ReviewOutputError as exc:
             raise ReviewOutputError(f"{agent}: {exc}") from exc
         for finding in findings:
+            # Merge equivalent claims, never merely nearby issues in one file.
+            key = (finding.file, finding.line, finding.category, " ".join(finding.evidence.split()))
+            if key in positions:
+                index = positions[key]
+                previous = identified[index]
+                rank = {"minor": 0, "major": 1, "blocker": 2}
+                strongest = finding if rank[finding.severity] > rank[previous.finding.severity] else previous.finding
+                identified[index] = replace(previous, finding=strongest,
+                                             agents=tuple(dict.fromkeys((*previous.agents, agent))))
+                continue
+            positions[key] = len(identified)
             identified.append(
                 IdentifiedReviewFinding(
                     finding_id=f"F{len(identified) + 1:03d}",
                     agent=agent,
                     finding=finding,
+                    agents=(agent,),
                 )
             )
     return identified
@@ -221,18 +235,19 @@ def build_review_decision_records(
         if decision is None:
             continue
         finding = item.finding
-        records.append(
-            ReviewDecisionRecord(
-                fingerprint=review_finding_fingerprint(finding),
-                agent=item.agent,
-                severity=finding.severity,
-                category=finding.category,
-                file=finding.file,
-                evidence=finding.evidence,
-                decision=decision.decision,
-                reason=decision.reason,
+        for agent in item.agents or (item.agent,):
+            records.append(
+                ReviewDecisionRecord(
+                    fingerprint=review_finding_fingerprint(finding),
+                    agent=agent,
+                    severity=finding.severity,
+                    category=finding.category,
+                    file=finding.file,
+                    evidence=finding.evidence,
+                    decision=decision.decision,
+                    reason=decision.reason,
+                )
             )
-        )
     return records
 
 

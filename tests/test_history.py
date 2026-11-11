@@ -148,6 +148,8 @@ class HistoryTest(TaskRepositoryCase):
         history.record("validation", phase="task", status="failed", checks=[{"name": "test", "returncode": 1}])
         history.record("validation", phase="task", status="passed", checks=[{"name": "test", "returncode": 0}])
         history.record("review_decisions", source="agent_report", decisions=[{"decision": "rejected"}])
+        history.record("review_advisories", report="/repo/.git/reports/advisories.json",
+                       findings=[{"file": "design.md", "severity": "minor"}])
         history.executor_event("task", "retry_scheduled", {"next_attempt": 2})
         stats = RunStatistics()
         stats.on_invocation = history.invocation
@@ -159,6 +161,7 @@ class HistoryTest(TaskRepositoryCase):
         self.assertEqual(["failed", "passed"], [item["data"]["status"] for item in result["validation"]])
         self.assertEqual(1, len(result["retries"]["executor"]))
         self.assertEqual("agent_report", result["review"]["decisions"][0]["data"]["source"])
+        self.assertEqual("design.md", result["review"]["advisories"][0]["data"]["findings"][0]["file"])
         self.assertEqual(15, result["statistics"]["usage"]["total_tokens"])
         self.assertEqual(["actual-model"], result["statistics"]["invocations"][0]["models"])
         with self.assertRaises(RuntimeError):

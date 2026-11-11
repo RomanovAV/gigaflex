@@ -23,6 +23,10 @@ class GitError(RuntimeError):
     pass
 
 
+class DirtyWorkingTreeError(GitError):
+    pass
+
+
 @dataclass(frozen=True)
 class BranchBaseline:
     base_branch: str
@@ -322,7 +326,7 @@ class GitService:
             shown = ", ".join(str(path) for path in remaining[:5])
             if len(remaining) > 5:
                 shown += f", ... ({len(remaining)} total)"
-            raise GitError(
+            raise DirtyWorkingTreeError(
                 "working tree has uncommitted changes "
                 f"({shown}); commit/stash them or pass --allow-dirty"
             )
@@ -813,6 +817,7 @@ class TaskWorktree:
     original_index_tree: str = ""
     original_branch: str = ""
     resumed: bool = False
+    context_updated: bool = False
     phase: str = "task"
     phase_context: dict[str, object] = field(default_factory=dict)
     artifact_snapshot: Optional[ArtifactSnapshot] = None
@@ -848,6 +853,8 @@ class TaskWorktreeManager:
     temp_parent: Optional[Path] = None
     ignored_paths: tuple[Path, ...] = ()
     artifact_paths: tuple[Path, ...] = ()
+    resume_context_paths: tuple[Path, ...] = ()
+    resume_note: str = ""
 
     def __post_init__(self) -> None:
         self.artifact_paths = artifact_paths(self.artifact_paths)

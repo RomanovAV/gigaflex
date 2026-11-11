@@ -10,6 +10,18 @@ from gigaflex.dashboard import ProgressDashboard, dashboard_paths
 
 
 class ProgressDashboardTest(unittest.TestCase):
+    def test_context_advisories_are_visible_and_escaped_without_blocking_success(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            dashboard = ProgressDashboard(root / 'status.json', root / 'status.html', name='demo', plan_file=None)
+            dashboard.review_advisories('/repo/.git/reports/advisories.json',
+                                        [{'file': 'design.md', 'evidence': 'Stale <reference>'}])
+            dashboard.complete()
+            self.assertEqual('success', dashboard.state['status'])
+            self.assertIn('Non-blocking context advisories', dashboard.html_path.read_text())
+            self.assertIn('Stale &lt;reference&gt;', dashboard.html_path.read_text())
+            self.assertNotIn('Stale <reference>', dashboard.html_path.read_text())
+
     def test_blocked_dashboard_shows_reason_saved_work_and_escaped_resume_command(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

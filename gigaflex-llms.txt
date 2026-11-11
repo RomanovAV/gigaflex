@@ -5,6 +5,15 @@ executes one task group per fresh GigaCode session, requires a verifiable task
 commit, runs isolated review passes, synthesizes confirmed findings, and
 performs a final validation pass.
 
+In a terminal outside CI, bare `gigaflex` starts an ask-style launcher: choose
+saved work, an OpenSpec change, a Markdown plan, review, or plan creation.
+Select with arrows and Enter; basic terminals offer numbers. Esc cancels a
+menu, and empty optional text returns to the choices. Paths can be selected from
+the project or entered manually. Completed launcher actions return to its menu.
+Missing review bases, dirty inputs, and missing planning skills have contextual
+choices. Explicit command invocations remain supported. Non-TTY/CI execution
+never waits for these prompts; no new flags or dependencies are required.
+
 Execution/review history is retained under the common Git directory at
 `gigaflex/runs/<run_id>/<attempt_id>/`. Each attempt saves input versions,
 prompt contents, effective settings, its own transcript/events, and a structured
@@ -228,7 +237,7 @@ identifiers such as `F001`.
 
 If every reviewer reports no findings, synthesis is skipped. Otherwise the
 synthesis session validates each finding and returns exactly one `fixed`,
-`rejected`, `confirmed`, or `blocked` decision per identifier. Synthesis uses
+`rejected`, `confirmed`, `blocked`, or `advisory` decision per identifier. Synthesis uses
 the task model in one recoverable isolated candidate. Dirty output receives a
 bounded retry there; only clean commits are promoted. Fixed, confirmed, or
 otherwise code-changing decisions trigger another specialist
@@ -241,6 +250,26 @@ review and synthesis passes; current repository evidence remains authoritative.
 A reported blocker is audited once before it can stop the run. Review allows 10
 repair cycles by default and always adds one terminal read-only verification
 after the final allowed repair.
+
+Recoverable GigaCode process failures are reconciled before stopping. A complete
+synthesis ledger on a clean checked candidate can survive a transport failure;
+complete final verification can survive it on an unchanged checked candidate.
+Incomplete results restart only the failed process in the same workspace within
+the existing completion-retry budget. Parallel reviewer replacements run only
+after verifying that the first process did not mutate its snapshot. Permission
+errors, rate-limit exhaustion, real blockers, and exhausted attempts still stop.
+
+Equivalent findings (same file, line, category, normalized evidence) are merged
+before synthesis; reporting agents and strongest severity are retained. Minor
+documentation/traceability errata in protected context can be advisory only when
+they affect neither required behavior nor validation. Deliverable defects and
+major/blocker findings remain blocking. Advisory reports live under the common
+Git directory's `gigaflex/reports/`, with dashboard and history references.
+An unresolved synthesis that changes no content/index/artifacts stops without
+another review round (empty commits do not count as progress). Resume then
+requires an explanatory --resume-note when no updated OpenSpec context is detected.
+Read-only state failures expose changed paths and HEAD/index IDs in the error
+and structured repository_change events.
 
 Finalize runs read-only after successful review by default. If it discovers a
 repair, the repair is committed in an isolated candidate, followed by fresh
@@ -431,12 +460,25 @@ review safety bindings added by the renderer.
 - Exhausted runs report `blocked` in statistics and dashboard JSON, exit 1,
   and print the cause, saved-work location, and a continuation command in the
   terminal and dashboard. Ctrl+C reports `interrupted` and exits 130. There are
-  no external notifications or interactive prompts waiting for input.
+  no external notifications. In a terminal outside CI, an ask-style recovery
+  menu can continue the saved work, add operator context, show details, restart
+  from the current checkout, or exit preserving recovery. In non-TTY/CI there
+  are no interactive waits and the printed commands/exit codes remain unchanged.
 - Use the printed command with `--resume` to continue the saved task, including
   its commits and staged/unstaged work. The command pins the original review
   base and preserves startup options, including dirty-input permission.
   `--resume-note "context"` supplies operator context to all execution phases.
-- Resume requires unchanged execution branch, HEAD, working contents, and index.
+- Ordinary `--resume --openspec CHANGE` automatically reconciles saved isolated
+  work after edits limited to existing proposal/design/spec files; those edits
+  do not require --allow-dirty or another recovery flag.
+  Checklist, implementation, unrelated staged changes, branch and artifact
+  changes remain rejected. Saved commits are consolidated onto current input,
+  staged/unstaged output restored separately, and old context changes excluded.
+  Original recovery is retained. Saved task completion is revalidated against
+  updated context; checkpoints are invalidated and full runs repeat review and
+  finalize. Context-only commits must descend from the saved checkout.
+- Outside this context-only reconciliation, resume requires unchanged execution
+  branch, HEAD, working contents, and index.
   Concurrent resumes are rejected. Changed state keeps the recovery packet;
   `--restart` explicitly starts from the current checkout while retaining old
   bundles and worktrees for manual inspection. Ordinary runs cannot silently

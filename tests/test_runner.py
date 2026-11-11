@@ -714,7 +714,8 @@ class RunnerTest(unittest.TestCase):
                 ProgressLog(tmp_path / "progress.txt"),
                 synthesis_executor=CallbackExecutor(recover),  # type: ignore[arg-type]
             )
-            two_findings = f"{VALID_REVIEW_FINDING}\n\n{VALID_REVIEW_FINDING}"
+            distinct = VALID_REVIEW_FINDING.replace("The reported total", "The reported subtotal")
+            two_findings = f"{VALID_REVIEW_FINDING}\n\n{distinct}"
 
             completed = runner._accept_review_synthesis_or_raise(  # noqa: SLF001
                 ExecResult(output=synthesis_decision("F001", "rejected")),

@@ -2,6 +2,23 @@
 
 Python autonomous OpenSpec change and plan runner for GigaCode CLI.
 
+In a terminal, run `gigaflex` without arguments to choose what to do with the
+arrow keys and Enter: resume saved work, execute an OpenSpec change or Markdown
+plan, review current changes, or create a plan. OpenSpec changes and active plans
+are listed automatically; a manual path is available too. Esc goes back or exits.
+Completed operations return to this menu. Existing explicit commands still run
+directly and remain suitable for scripts.
+
+When a decision is needed, an ask-style menu offers the relevant choices:
+accept existing working changes, select the comparison base for review, continue
+saved work with an optional explanation, inspect the failure, start over from
+the current checkout, or exit while keeping recovery. Starting over explicitly
+leaves the previous saved work separate; it is not silently applied or deleted.
+The menu appears only with terminal input and output and outside CI. A basic
+terminal (`TERM=dumb`) uses numbered answers. Redirected input/output and CI keep
+the non-interactive exit codes and printed continuation commands, without waiting
+for input. No extra interactive-mode flag or dependency is required.
+
 For a compact LLM-oriented project reference, see
 [`gigaflex-llms.txt`](gigaflex-llms.txt).
 
@@ -140,10 +157,14 @@ submodules and nested repositories, whose contents a parent bundle cannot save.
 
 When automatic attempts are exhausted, the terminal and dashboard show
 **Needs attention**, the cause, the saved-work location, and a ready-to-run
-continuation command. Statistics and dashboard JSON use `status: blocked`;
-the process exits with code 1. Ctrl+C records `interrupted` and exits with 130.
-There are no external notifications and no process waiting for an interactive
-answer. Resolve the reported cause, then use the printed command. For example:
+continuation command. Statistics and dashboard JSON use `status: blocked`.
+In a terminal, choose the next step in the recovery menu; you do not need to copy
+the command. The stopped attempt is saved before the menu opens, and continuing
+creates a linked attempt under the same logical run. Outside a terminal, or when
+you choose to exit, the process exits with code 1. Ctrl+C records `interrupted`
+and exits with 130; cancelling the menu also preserves the stopped work.
+There are no external notifications. You can also continue with the printed
+command. For example:
 
 ```bash
 gigaflex docs/plans/my-feature.md --resume
@@ -158,13 +179,46 @@ task and continues the run. A clean, already completed task whose promotion
 failed can be promoted without another agent call. `--resume-note` supplies
 operator context to the task, review, and finalize prompts.
 
-Resume requires the original execution branch, HEAD, file contents, and staged
-state. A changed checkout or a concurrent resume stops safely and retains the
+Outside the OpenSpec context-only reconciliation described below, resume requires
+the original execution branch, HEAD, file contents, and staged state.
+A changed checkout or a concurrent resume stops safely and retains the
 saved work. If you intentionally changed the checkout and want to proceed from
 that state, use `--restart` instead of `--resume`; it releases the stopped-run
 record while retaining old recovery bundles and any retained worktree for manual
 inspection. A normal launch never silently discards a recorded stopped task.
 Existing bundles from the earlier format remain available for manual recovery.
+
+Normally a crashed GigaCode process is restarted automatically within the
+existing retry budget. Before stopping, the runner checks whether the process
+already left a complete, clean, validated result. Synthesis can continue from a
+complete decision ledger and committed result; final verification can reuse a
+complete success signal on an unchanged checked candidate. Otherwise only the
+failed process is restarted in the same workspace, preserving prior work.
+Failed parallel reviewers are retried individually after checking their state;
+successful reviewers are not rerun. Permission failures, rate-limit exhaustion,
+real contract blockers, and exhausted retries still stop with saved recovery.
+
+If a stopped OpenSpec run requires a human correction to its existing proposal,
+design, or delta specs, use the same continuation command:
+
+```bash
+gigaflex --openspec openspec/changes/my-feature --resume
+```
+
+Resume automatically reconciles changes limited to existing OpenSpec context;
+checklist, implementation, unrelated index changes, branch changes, and changed
+task artifacts still stop recovery. Context-only commits must descend from the
+saved checkout. Saved implementation commits are consolidated into a new
+isolated candidate on the current input, with their staged/unstaged output
+restored separately and old context edits excluded. The original recovery
+bundle or retained workspace remains available. The resumed task is revalidated
+against the current context even if its saved checklist was complete. Review
+and finalize checkpoints are invalidated, and a full run performs fresh review
+and finalize before acceptance. This reconciliation requires saved isolated work;
+without such work, ordinary `--resume` already performs the necessary fresh
+review when the repository state changed.
+Populated nested repositories/submodules in a retained workspace require manual
+reconciliation; automatic copying is refused and the original work is retained.
 
 Run a standard local OpenSpec `spec-driven` change by passing its change
 directory:
@@ -535,6 +589,22 @@ Review behavior:
   output receives a bounded corrective retry in that same candidate. Only a
   clean committed candidate is promoted, and every promoted fix receives a
   fresh review; runner-owned plan and context remain read-only
+- equivalent findings with the same file, line, category, and normalized
+  evidence are merged before synthesis, retaining every reporting specialist
+  and the strongest severity; different claims are not merged by proximity
+- minor documentation/traceability errata in protected context may receive an
+  `advisory` decision when they do not affect required behavior or validation.
+  They are reported separately in `.git/gigaflex/reports/<invocation>-advisories.json`,
+  the dashboard, and run history. Executable/delivered files, major or blocker
+  findings, requirement ambiguities, and unusable acceptance checks cannot use
+  this path; protected documents are never edited by synthesis
+- unresolved synthesis with unchanged content, index, and task artifacts stops
+  before another review cycle, even if the agent created an empty commit.
+  Recovery is retained; a subsequent resume needs `--resume-note` explaining
+  the resolved cause when no updated OpenSpec context is detected
+- failed read-only state checks report changed file names, staged paths, and
+  before/after HEAD and index IDs; full state details are retained in structured
+  `repository_change` events, without dumping file contents
 - finalize runs read-only after a successful review by default. Repairs happen
   in an isolated candidate, followed by fresh review and another finalize pass;
   pass `--no-finalize` to skip this verification

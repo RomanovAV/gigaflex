@@ -70,6 +70,32 @@ def repository_state(
     return RepositoryState(git.head_commit(), git.tree_id(snapshot), index, artifacts)
 
 
+def repository_changes(git: GitService, before: RepositoryState, after: RepositoryState) -> dict[str, object]:
+    """Describe a failed state binding using names and object IDs, not file contents."""
+    report: dict[str, object] = {"before": asdict(before), "after": asdict(after)}
+    for label, old, new in (("files", before.tree, after.tree), ("staged_files", before.index, after.index)):
+        report[label] = (git.run("diff", "--name-only", "-z", "--no-renames", "--no-ext-diff",
+                                 old, new, "--").stdout.rstrip("\0").split("\0") if old != new else [])
+    report["artifacts_changed"] = before.artifacts != after.artifacts
+    return report
+
+
+def describe_repository_changes(report: dict[str, object]) -> str:
+    before, after = report["before"], report["after"]
+    details = []
+    for label in ("head", "index"):
+        if before[label] != after[label]:
+            details.append(f"{label.upper()}: {before[label]} -> {after[label]}")
+    for label in ("files", "staged_files"):
+        paths = report[label]
+        if paths:
+            details.append(f"{label}: " + ", ".join(repr(path) for path in paths[:30])
+                           + (f" (+{len(paths) - 30} more; see repository_change event)" if len(paths) > 30 else ""))
+    if report["artifacts_changed"]:
+        details.append("configured task artifacts changed")
+    return "; ".join(details)
+
+
 def run_validation(command: ValidationCommand, root: Path) -> dict[str, object]:
     started = time.monotonic()
     result = {**asdict(command), "status": "failed", "returncode": None, "output": ""}

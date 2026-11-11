@@ -27,6 +27,12 @@ retained until manually removed.
 - `--resume` retains `run_id`, creates a new `attempt_id`, and references the
   stopped attempt through `parent_attempt_id`. The link is saved with the
   stopped checkpoint and checked against the original identity and base commit.
+- The interactive recovery menu opens only after the stopped attempt's history
+  and recovery have been saved. Choosing continue executes the same structured
+  resume arguments as the printed command, without a shell, and creates the
+  same linked attempt. Exit or cancellation leaves the stopped record intact;
+  choosing start-over explicitly creates a new logical run and retains the old
+  recovery for inspection.
 - Old checkpoints or removed history may lack a usable parent. Such a resume
   records `mode: resume`, `lineage: unavailable`, and a null parent. Do not count
   it as an independent new task merely because a new ID had to be allocated.
@@ -97,10 +103,24 @@ recording.
   repository state where available. `not_configured` means no explicit checks
   were configured for that phase; it is not a passed test.
 - `review.passes`, `review.findings`, and `review.decisions` preserve parsed
-  review observations, including rejected/blocked decisions and empty final
+  review observations, including rejected/blocked/advisory decisions and empty final
   passes. Agent claims are not promoted to independently proven root causes.
   Findings from configured check failures identify `runner_validation` as
   their agent/source.
+- Equivalent findings retain all reporting `agents` after deduplication;
+  `review.advisories` records minor protected-context errata and their separate
+  JSON report path. They are agent classifications, not independently proven
+  harmlessness. Major/blocker, executable, and deliverable defects cannot be
+  accepted as advisory.
+- `repository_change` events retain before/after HEAD, tree, and index IDs,
+  changed paths, staged paths, and whether configured artifacts changed.
+  `review_no_progress` records an unresolved synthesis that changed no content;
+  its saved phase context prevents an unexplained repeat on resume.
+- `process_recovery` records whether a recoverable process failure was resolved
+  using a complete validated result or by restarting the affected process.
+  Failed subprocess receipts remain in statistics; an overall successful run
+  does not rewrite them as successful calls. `context_updated` records automatic
+  OpenSpec reconciliation on resume and the required revalidation.
 - `tasks` records task starts and accepted, promoted completions in event
   sequence. `retries` includes executor retries and runner completion/repair
   retries. Executor invocation events have unique `call_id` values.

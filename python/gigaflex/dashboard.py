@@ -379,6 +379,11 @@ class ProgressDashboard:
             self._state["verification"] = report
             self._write_locked()
 
+    def review_advisories(self, report: str, findings: list[dict[str, object]]) -> None:
+        with self._lock:
+            self._state["advisories"] = {"report": report, "findings": findings}
+            self._write_locked()
+
     @property
     def state(self) -> dict[str, object]:
         with self._lock:
@@ -628,6 +633,7 @@ def _render_html(state: dict[str, object]) -> str:
       <aside class="panel"><h2>Active sessions</h2>{session_html}<div class="metrics"><div class="metric"><b>{token_text}</b><span>tokens</span></div><div class="metric"><b>{sum(1 for item in tasks if isinstance(item, dict) and item.get('status') == 'completed')} / {len(tasks)}</b><span>tasks complete</span></div></div></aside>
     </div>
     {review_html}
+    {_advisories_html(state)}
     {validation_html}
     <footer>{f'<span>Branch: <code>{branch}</code></span>' if branch else ''}<span>Updated: <time>{updated_at}</time></span>{f'<span>Detailed log: <code>{progress_file}</code></span>' if progress_file else ''}</footer>
   </main>
@@ -645,6 +651,17 @@ def _render_html(state: dict[str, object]) -> str:
 </body>
 </html>
 """
+
+
+def _advisories_html(state: dict[str, object]) -> str:
+    advisories = state.get("advisories", {})
+    if not advisories:
+        return ""
+    items = ''.join('<li><code>' + html.escape(str(item.get("file", ""))) + '</code>: '
+                    + html.escape(str(item.get("evidence", ""))) + '</li>'
+                    for item in advisories.get("findings", []))
+    return ('<section class="panel"><h2>Non-blocking context advisories</h2><ul>' + items
+            + '</ul><p>Report: <code>' + html.escape(str(advisories.get("report", ""))) + '</code></p></section>')
 
 
 def _validation_html(state: dict[str, object]) -> str:
