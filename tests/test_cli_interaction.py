@@ -179,3 +179,15 @@ class CliInteractionTest(TaskRepositoryCase):
         state = json.loads((self.repo / '.gigaflex/progress/checkpoint-plan.json').read_text())
         self.assertTrue((Path(state['blocked']['task_recovery']['directory']) / 'task.bundle').exists())
         self.assertEqual('blocked', self.results()[0]['status'])
+
+    def test_notifications_can_be_disabled_without_disabling_recovery(self):
+        config = self.root / 'silent-config'
+        config.write_text('[gigaflex]\nnotifications = false\n')
+        with self.environment(lambda *args, **kwargs: ExecResult(output='original failure', returncode=1), interactive=False):
+            self.assertEqual(1, main([*self.args, '--config', str(config)]))
+        self.notification.assert_not_called()
+        result = self.results()[0]
+        self.assertEqual('blocked', result['status'])
+        self.assertEqual('disabled', result['notifications'][0]['data']['skipped'])
+        state = json.loads((self.repo / '.gigaflex/progress/checkpoint-plan.json').read_text())
+        self.assertTrue((Path(state['blocked']['task_recovery']['directory']) / 'task.bundle').exists())

@@ -1229,7 +1229,9 @@ def _main_once(argv: Optional[list[str]] = None):
             )
             if run_status == 'blocked':
                 try:
-                    notification = notify_attention(git.repo_root().name)
+                    notification = (notify_attention(git.repo_root().name) if cfg.notifications else
+                                    {'terminal_bell_sent': False, 'desktop_requested': False,
+                                     'backend': '', 'skipped': 'disabled'})
                     log.event('attention_notification', **notification)
                 except Exception as notification_error:
                     # A failed notifier must not hide the original blocker or

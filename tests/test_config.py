@@ -72,6 +72,13 @@ class ConfigTest(unittest.TestCase):
     def test_finalize_is_enabled_by_default(self) -> None:
         self.assertTrue(Config().finalize_enabled)
 
+    def test_notifications_default_on_and_can_be_disabled_in_config(self) -> None:
+        self.assertTrue(Config().notifications)
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / 'config'
+            path.write_text('[gigaflex]\nnotifications = false\n', encoding='utf-8')
+            self.assertFalse(load_config(path).notifications)
+
     def test_worktree_is_disabled_by_default(self) -> None:
         self.assertFalse(Config().worktree)
 

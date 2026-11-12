@@ -45,6 +45,7 @@ class Config:
     max_iterations: int = 50
     review_iterations: int = 10
     finalize_enabled: bool = True
+    notifications: bool = True
     session_timeout: Optional[int] = 1800
     idle_timeout: Optional[int] = 900
     retry_count: int = 1
@@ -144,6 +145,7 @@ def load_config(path: Optional[Path] = None) -> Config:
     cfg.max_iterations = section.getint("max_iterations", cfg.max_iterations)
     cfg.review_iterations = section.getint("review_iterations", cfg.review_iterations)
     cfg.finalize_enabled = section.getboolean("finalize_enabled", cfg.finalize_enabled)
+    cfg.notifications = section.getboolean("notifications", cfg.notifications)
     if "session_timeout" in section:
         cfg.session_timeout = section.getint("session_timeout")
     if "idle_timeout" in section:
@@ -291,6 +293,8 @@ DEFAULT_CONFIG_TEXT = """[gigaflex]
 # Maximum synthesis/repair cycles; one terminal verification runs afterward.
 # review_iterations = 10
 # finalize_enabled = true
+# Local attention notifications on blocked attempts (desktop + terminal bell).
+# notifications = true
 # Explicit argv, never a shell string. Default phases: review and finalize.
 # validation_commands = [{"name":"tests","argv":["python3","-m","unittest","discover","-s","tests"],"cwd":".","timeout":300}]
 # session_timeout = 1800

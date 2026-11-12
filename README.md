@@ -178,6 +178,18 @@ gigaflex docs/plans/my-feature.md --resume
 gigaflex --openspec openspec/changes/my-feature --resume --resume-note "Test service restarted"
 ```
 
+To disable both desktop notifications and the terminal bell, set this in the
+existing global `~/.config/gigaflex/config` or project `.gigaflex/config`:
+
+```ini
+[gigaflex]
+notifications = false
+```
+
+Notifications default to enabled. This setting applies to subsequent attempts;
+the recovery menu and saved-work handling remain available when notifications
+are disabled.
+
 The printed command preserves the original options and pins the captured base
 commit; it adds `--allow-dirty` if the task had dirty inputs. `--resume` loads the
 saved commits, index, and working files into an isolated task worktree, or uses

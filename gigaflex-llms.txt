@@ -464,6 +464,8 @@ review safety bindings added by the renderer.
   macOS osascript/Linux notify-send when available. SSH uses only the terminal
   bell; CI, success, automatic retries, and deliberate Ctrl+C are silent.
   No external service is contacted, and notifier failures never lose recovery.
+  Set notifications = false in the existing global/project [gigaflex] config
+  section to disable both desktop notifications and the bell. Default: true.
   In a terminal outside CI, an ask-style recovery
   menu can continue the saved work, add operator context, show details, restart
   from the current checkout, or exit preserving recovery. In non-TTY/CI there
