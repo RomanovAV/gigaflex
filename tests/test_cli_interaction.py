@@ -49,6 +49,7 @@ class CliInteractionTest(TaskRepositoryCase):
 
     def test_terminal_resume_finalizes_failure_then_continues_without_command_copy(self):
         calls = []
+        self.notification.return_value = {'terminal_bell_sent': True, 'desktop_requested': False, 'backend': ''}
         def execute(prompt, *, cwd=None, retry_guard=None):
             calls.append(cwd)
             partial = cwd / 'valuable.txt'
@@ -58,6 +59,7 @@ class CliInteractionTest(TaskRepositoryCase):
             self.assertEqual('saved result\n', partial.read_text())
             return self.complete(prompt, cwd=cwd)
         def choose(stopped):
+            self.notification.assert_called_once_with(self.repo.name)
             records = self.results()
             self.assertEqual(1, len(records))
             self.assertEqual('blocked', records[0]['status'])
@@ -68,11 +70,14 @@ class CliInteractionTest(TaskRepositoryCase):
             self.assertEqual(0, main(self.args))
         self.assertEqual(2, len(calls))
         self.assertEqual(1, menu.call_count)
+        self.notification.assert_called_once()
         records = self.results()
         first = next(item for item in records if item['status'] == 'blocked')
         second = next(item for item in records if item['status'] == 'success')
         self.assertEqual(first['run_id'], second['run_id'])
         self.assertEqual(first['attempt_id'], second['parent_attempt_id'])
+        self.assertTrue(first['notifications'][0]['data']['terminal_bell_sent'])
+        self.assertEqual([], second['notifications'])
         self.assertEqual('saved result\n', (self.repo / 'valuable.txt').read_text())
 
     def test_menu_exit_and_ctrl_c_keep_saved_work(self):
@@ -146,3 +151,31 @@ class CliInteractionTest(TaskRepositoryCase):
             self.assertEqual(0, main(arguments))
         self.assertEqual(1, question.call_count)
         self.assertTrue(list((self.repo / 'docs/plans').glob('*.md')))
+
+    def test_recovered_timeout_and_success_do_not_notify(self):
+        def complete_then_timeout(prompt, *, cwd=None, retry_guard=None):
+            result = self.complete(prompt, cwd=cwd)
+            result.returncode = -9
+            result.timed_out = True
+            return result
+        with self.environment(complete_then_timeout):
+            self.assertEqual(0, main(self.args))
+        self.notification.assert_not_called()
+
+    def test_deliberate_interrupt_preserves_work_without_notification(self):
+        def interrupt(prompt, *, cwd=None, retry_guard=None):
+            (cwd / 'valuable.txt').write_text('keep after interruption\n')
+            raise KeyboardInterrupt
+        with self.environment(interrupt):
+            self.assertEqual(130, main(self.args))
+        self.notification.assert_not_called()
+        state = json.loads((self.repo / '.gigaflex/progress/checkpoint-plan.json').read_text())
+        self.assertTrue((Path(state['blocked']['task_recovery']['directory']) / 'task.bundle').exists())
+
+    def test_notification_failure_does_not_hide_original_blocker_or_recovery(self):
+        self.notification.side_effect = RuntimeError('notifier unavailable')
+        with self.environment(lambda *args, **kwargs: ExecResult(output='original failure', returncode=1), interactive=False):
+            self.assertEqual(1, main(self.args))
+        state = json.loads((self.repo / '.gigaflex/progress/checkpoint-plan.json').read_text())
+        self.assertTrue((Path(state['blocked']['task_recovery']['directory']) / 'task.bundle').exists())
+        self.assertEqual('blocked', self.results()[0]['status'])

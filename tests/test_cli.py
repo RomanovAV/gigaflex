@@ -37,6 +37,9 @@ class CliTest(unittest.TestCase):
         browser_patch = patch("gigaflex.cli.webbrowser.open_new_tab", return_value=True)
         self.browser_open = browser_patch.start()
         self.addCleanup(browser_patch.stop)
+        notifications = patch('gigaflex.cli.notify_attention', return_value={})
+        notifications.start()
+        self.addCleanup(notifications.stop)
 
     def test_extra_gigacode_args_are_inserted_before_prompt_option(self) -> None:
         self.assertEqual(

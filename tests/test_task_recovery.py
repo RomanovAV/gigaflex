@@ -16,6 +16,9 @@ from gigaflex.runner import RunOptions, Runner
 
 class TaskRepositoryCase(unittest.TestCase):
     def setUp(self):
+        notifications = patch('gigaflex.cli.notify_attention', return_value={})
+        self.notification = notifications.start()
+        self.addCleanup(notifications.stop)
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
         self.addCleanup(os.chdir, Path.cwd())

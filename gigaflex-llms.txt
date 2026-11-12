@@ -460,7 +460,11 @@ review safety bindings added by the renderer.
 - Exhausted runs report `blocked` in statistics and dashboard JSON, exit 1,
   and print the cause, saved-work location, and a continuation command in the
   terminal and dashboard. Ctrl+C reports `interrupted` and exits 130. There are
-  no external notifications. In a terminal outside CI, an ask-style recovery
+  local attention notifications on final blocked attempts: terminal bell plus
+  macOS osascript/Linux notify-send when available. SSH uses only the terminal
+  bell; CI, success, automatic retries, and deliberate Ctrl+C are silent.
+  No external service is contacted, and notifier failures never lose recovery.
+  In a terminal outside CI, an ask-style recovery
   menu can continue the saved work, add operator context, show details, restart
   from the current checkout, or exit preserving recovery. In non-TTY/CI there
   are no interactive waits and the printed commands/exit codes remain unchanged.

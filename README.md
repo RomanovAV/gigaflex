@@ -163,7 +163,14 @@ the command. The stopped attempt is saved before the menu opens, and continuing
 creates a linked attempt under the same logical run. Outside a terminal, or when
 you choose to exit, the process exits with code 1. Ctrl+C records `interrupted`
 and exits with 130; cancelling the menu also preserves the stopped work.
-There are no external notifications. You can also continue with the printed
+When a run needs your intervention, GigaFlex sends one terminal bell and, when
+available, requests a local desktop notification through macOS `osascript` or
+Linux `notify-send`. Over SSH it uses the terminal bell on the client rather
+than notifying the remote desktop. CI is silent. Automatic retries, successful
+runs, and deliberate Ctrl+C do not notify. Notification failures never interrupt
+recovery; actual sound/banner visibility depends on terminal and OS settings.
+There are no additional notification flags or required dependencies, and no
+messages are sent to external services. You can also continue with the printed
 command. For example:
 
 ```bash

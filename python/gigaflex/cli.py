@@ -48,6 +48,7 @@ from .skills import (
 from .stats import RunStatistics, statistics_path
 from .interaction import StoppedRun, parse_continuation, recovery_choice, startup_choice, choose_review_base
 from .terminal import Choice, ask, interactive_available, _display
+from .notifications import notify_attention
 from .history import RunHistory, capture_inputs, capture_repository, history_root
 from .archive import archive_plan
 
@@ -1226,6 +1227,14 @@ def _main_once(argv: Optional[list[str]] = None):
                 failure_reason=failure_reason,
                 failure_phase=failure_phase,
             )
+            if run_status == 'blocked':
+                try:
+                    notification = notify_attention(git.repo_root().name)
+                    log.event('attention_notification', **notification)
+                except Exception as notification_error:
+                    # A failed notifier must not hide the original blocker or
+                    # prevent the already-saved work/history from being kept.
+                    log.diagnostic(f'notification unavailable: {type(notification_error).__name__}')
             report = statistics.render_text()
             statistics.write_json(stats_file)
             log.section("run statistics")

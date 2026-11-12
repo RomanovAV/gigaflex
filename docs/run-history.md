@@ -121,6 +121,10 @@ recording.
   Failed subprocess receipts remain in statistics; an overall successful run
   does not rewrite them as successful calls. `context_updated` records automatic
   OpenSpec reconciliation on resume and the required revalidation.
+- `notifications` preserves `attention_notification` events for blocked attempts:
+  whether a terminal bell was sent, the desktop backend, and whether its request
+  completed successfully. A successful request does not prove that the OS
+  displayed a banner or the terminal played a sound. CI records a skipped result.
 - `tasks` records task starts and accepted, promoted completions in event
   sequence. `retries` includes executor retries and runner completion/repair
   retries. Executor invocation events have unique `call_id` values.

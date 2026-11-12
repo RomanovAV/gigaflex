@@ -199,6 +199,7 @@ class RunHistory:
                 "repository": repository,
                 "validation": groups.get("validation", []),
                 "verification": groups.get("verification", []),
+                "notifications": groups.get("attention_notification", []),
                 "tasks": [item for item in self._events if item["kind"] in {"task_started", "task_completed"}],
                 "review": {"passes": groups.get("review_pass", []),
                            "findings": groups.get("review_findings", []),
